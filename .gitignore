@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+build/
+dist/
+*.exe
+*.mp4
+*.jpg
+*.ico
+BACKUP CODIGO/
+BAUL/

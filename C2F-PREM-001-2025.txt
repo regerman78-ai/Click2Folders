@@ -1,0 +1,17 @@
+Listado de 10 seriales diferentes:
+
+Agregué un conjunto de 10 seriales únicos en _is_valid_serial, con formato "C2F-PREM-XXX-2025" (donde XXX va de 001 a 010). Estos son:
+
+C2F-PREM-001-2025
+C2F-PREM-002-2025
+C2F-PREM-003-2025
+C2F-PREM-004-2025
+C2F-PREM-005-2025
+C2F-PREM-006-2025
+C2F-PREM-007-2025
+C2F-PREM-008-2025
+C2F-PREM-009-2025
+C2F-PREM-010-2025
+
+
+Puedes usar estos seriales para ventas y asignarlos a cada cliente.

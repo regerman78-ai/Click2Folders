@@ -1,0 +1,19 @@
+Click2Folders v1.0
+Copyright © 2025 German Vargas
+All rights reserved.
+
+Este software se proporciona «tal cual», sin garantía de ningún tipo, 
+ya sea expresa o implícita, incluyendo, pero sin limitarse a, 
+las garantías implícitas de comerciabilidad e idoneidad para un fin determinado.
+
+No se permite redistribuir, modificar o vender este software sin el permiso explícito 
+del titular de los derechos de autor.
+-----------------------------------------------------------------------------
+
+This software is provided "as is" without warranty of any kind, 
+either expressed or implied, including, but not limited to, 
+the implied warranties of merchantability and fitness for a particular purpose.
+
+You may not redistribute, modify, or sell this software without explicit 
+permission from the copyright holder.
+-------------------------------------------------------------------
