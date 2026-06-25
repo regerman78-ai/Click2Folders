@@ -30,3 +30,49 @@ opencode session list
 
 ## Exportar conversación
 Dentro del TUI: escribe `/export` y se guarda como archivo Markdown.
+
+---
+
+# Git - Control de versiones local
+
+## ¿Para qué sirve?
+Tomar "fotos" del código cuando funciona. Si luego algo se daña, puedes volver a esa foto.
+
+## Comandos básicos (desde cmd en la carpeta Click2folders)
+
+### Ver el estado actual
+```
+git status
+```
+
+### Ver el historial de versiones (commits)
+```
+git log --oneline
+```
+
+### Ver qué cambió en el último commit
+```
+git diff
+```
+
+### Volver a la versión anterior (si algo se dañó)
+Opción A - Ver archivos como estaban (sin borrar los cambios actuales):
+```
+git restore .
+```
+
+Opción B - Volver al último commit (descarta cambios actuales):
+```
+git checkout .
+```
+
+### Guardar una nueva versión después de cambios
+```
+git add .
+git commit -m "descripción de lo que cambiaste"
+```
+
+## Nota
+- Todo queda en tu PC, no necesita internet
+- Git no guarda las conversaciones de opencode, solo el código
+- Las conversaciones siguen en `%USERPROFILE%\.local\share\opencode\`
