@@ -109,6 +109,12 @@
 - `BAUL\click2folders_backup_27062026.py` - Primer backup
 - `BAUL\click2folders_backup_27062026_v2.py` - Segundo backup (actual)
 
+### Git
+- **Commit**: `fe7679f` - "Rediseño ventana donaciones con logos locales y cambio de idioma en ventanas"
+- **Fecha**: 27 Jun 2026
+- **Archivos modificados**: click2folders.py, NOTAS_SESION.md
+- **Para revertir**: `git checkout fe7679f click2folders.py`
+
 ---
 
 ## Sesión: 25 Jun 2026
