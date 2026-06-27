@@ -24,7 +24,7 @@ APP_NAME = "Click2Folders"
 APP_VERSION = "v1.8.49"
 WINDOW_TITLE = f"Click2Folders - Organizador Automático de Fotos y Videos {APP_VERSION}"
 ICON_FILE = "favicon.ico"
-base_path = getattr(sys, '_MEIPASS', os.getcwd())
+base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 
 # Carga condicional de librerías
 try:
@@ -1038,9 +1038,22 @@ class Click2FoldersApp(tk.Tk):
         # self.lbl_version.pack(side="right")
 
     def _toggle_lang(self):
+        # Detectar ventanas abiertas antes de cambiar idioma
+        windows_to_reopen = []
+        if hasattr(self, 'donate_win') and self.donate_win.win:
+            windows_to_reopen.append('donate')
+        if hasattr(self, 'support_win') and self.support_win.win:
+            windows_to_reopen.append('support')
+        if hasattr(self, 'tutorial_win') and self.tutorial_win.win:
+            windows_to_reopen.append('tutorial')
+        
         self.english_mode = not self.english_mode
-        # Actualizar título de la ventana principal
         eng = self.english_mode
+        
+        # Cerrar ventanas auxiliares abiertas
+        self._close_aux_windows()
+        
+        # Actualizar título de la ventana principal
         self.title(f"Click2Folders - Automatic Photo & Video Organizer {APP_VERSION}" if eng else WINDOW_TITLE)
         self.btn_support.config(text="Support" if eng else "Soporte")
         self.btn_donate.config(text="Donations" if eng else "Donaciones")
@@ -1054,7 +1067,7 @@ class Click2FoldersApp(tk.Tk):
         self.tree.heading("folder", text="Folder" if eng else "Carpeta")
         self.tree.heading("status", text="Status" if eng else "Estado")
         # Actualizar botones adicionales
-        self.btn_remove.config(text="Remove folders" if eng else "Quitar Carpetas")
+        self.btn_remove.config(text="Remove selected folders" if eng else "Quitar Carpetas Seleccionadas")
         self.btn_sel_all.config(text="Select all" if eng else "Seleccionar todo")
         self.btn_desel_all.config(text="Deselect all" if eng else "Deseleccionar todo")
         self.lbl_cf_prefix.config(text="Organizing folder: " if eng else "Organizando Carpeta: ")
@@ -1078,6 +1091,14 @@ class Click2FoldersApp(tk.Tk):
                 new_status = self._translate_status(current_status, eng)
                 if new_status != current_status:
                     self.tree.set(iid, "status", new_status)
+        
+        # Reabrir ventanas que estaban abiertas
+        if 'donate' in windows_to_reopen:
+            self.after(100, self.on_donate)
+        if 'support' in windows_to_reopen:
+            self.after(100, self.on_support)
+        if 'tutorial' in windows_to_reopen:
+            self.after(100, self.on_tutorial)
 
     def _translate_status(self, current_status, to_english):
         if to_english:
@@ -1280,7 +1301,7 @@ class Click2FoldersApp(tk.Tk):
                 self._tree_checked[iid] = False
                 self.tree.set(iid, "sel", "☐")
 
-        self.btn_remove = ttk.Button(btn_frame, text="Remove folders" if self.english_mode else "Quitar Carpetas", command=remove_checked)
+        self.btn_remove = ttk.Button(btn_frame, text="Remove selected folders" if self.english_mode else "Quitar Carpetas Seleccionadas", command=remove_checked)
         self.btn_remove.pack(side="left", padx=5)
         self.status_label = ttk.Label(btn_frame, text="", font=("Segoe UI", 10, "bold"))
         self.status_label.pack(side="left", padx=10)
@@ -1562,7 +1583,7 @@ class Click2FoldersApp(tk.Tk):
                     ("   Comienza a organizar las carpetas cargadas según el modo elegido.", False),
                     ("• Seleccionar todo / Deseleccionar todo:", True),
                     ("   Marca o desmarca todas las carpetas de la lista.", False),
-                    ("• Quitar Carpetas:", True),
+                    ("• Quitar Carpetas Seleccionadas:", True),
                     ("   Elimina de la lista las carpetas marcadas con ☑.", False),
                     ("• Deshacer organización:", True),
                     ("   Mueve todos los archivos de las subcarpetas de vuelta a la carpeta raíz y elimina las carpetas de mes vacías.", False),
@@ -1749,7 +1770,7 @@ class Click2FoldersApp(tk.Tk):
                         font=("Segoe UI", 11, "underline"), fg="blue", cursor="hand2")
         mail.bind("<Button-1>", copy_mail)
         mail.pack(pady=(0, 10))
-        ttk.Label(pad, text="Developed by: Germán Vargas", font=("Segoe UI", 9)).pack(pady=(6, 10))
+        ttk.Label(pad, text="Developed by: Germán Vargas" if eng else "Desarrollado por: Germán Vargas", font=("Segoe UI", 9)).pack(pady=(6, 10))
         ttk.Label(pad, text="© 2026 Click2Folders. All rights reserved." if eng else "© 2026 Click2Folders. Todos los derechos reservados.", font=("Segoe UI", 8)).pack()
         center_window(w, self)
         w.deiconify()
@@ -1794,57 +1815,79 @@ class Click2FoldersApp(tk.Tk):
         w.title("Donations" if eng else "Donaciones")
         w.resizable(False, False)
         safe_icon(w)
-        
-        w.withdraw()   # Ocultar primero
-        
+        w.withdraw()
+
         pad = ttk.Frame(w, padding=20)
         pad.pack(fill="both", expand=True)
-        
-        # Contenido
+
+        # Títulos
         ttk.Label(pad, text="Thank you for using Click2Folders!" if eng else "¡Gracias por usar Click2Folders!", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 6))
-        ttk.Label(pad, text="If you like the program, consider donating to support its development!" if eng else "¡Si te gusta el programa, considera donar para apoyar su desarrollo!", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 6))
-        ttk.Label(pad, text="", font=("Segoe UI", 10)).pack()
-        ttk.Label(pad, text="Click the links to copy them" if eng else "Haz click en los links para copiarlos", font=("Segoe UI", 10, "italic"), justify="center").pack(pady=(0, 6))
-        ttk.Label(pad, text="Paypal:", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 6))
+        ttk.Label(pad, text="If you like the program, consider donating to support its development!" if eng else "¡Si te gusta el programa, considera donar para apoyar su desarrollo!", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 24))
 
-        def copy_paypal(e=None):
-            self.clipboard_clear()
-            self.clipboard_append("regerman78@gmail.com")
-            self._show_tooltip_temporal("Email copied to clipboard" if getattr(self, 'english_mode', False) else "Correo copiado al portapapeles", event=e)
+        # --- PAYPAL ---
+        paypal_frame = ttk.Frame(pad)
+        paypal_frame.pack(fill="x", pady=(0, 10))
+        paypal_row = ttk.Frame(paypal_frame)
+        paypal_row.pack(anchor="center")
+        paypal_logo = load_image("BAUL/paypal-logo.jpg", max_width=90, max_height=50)
+        if paypal_logo:
+            lbl = tk.Label(paypal_row, image=paypal_logo, cursor="hand2")
+            lbl.image = paypal_logo
+            lbl.pack(side="left")
+            lbl.bind("<Button-1>", lambda e: webbrowser.open("https://www.paypal.com/donate?hosted_button_id=JMPWGD5VA32UW"))
 
-        paypal_label = tk.Label(pad, text="regerman78@gmail.com", font=("Segoe UI", 10), justify="center", fg="blue", cursor="hand2")
-        paypal_label.bind("<Button-1>", copy_paypal)
-        paypal_label.pack(pady=(0, 6))
-        ttk.Separator(pad, orient='horizontal').pack(fill='x', pady=10)
-        
-        ttk.Label(pad, text="Nequi Colombia Key:" if eng else "Llave Nequi Colombia:", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 6))
+        paypal_btn_img = load_image("BAUL/paypal_donate.gif")
+        if paypal_btn_img:
+            btn = tk.Label(paypal_row, image=paypal_btn_img, cursor="hand2")
+            btn.image = paypal_btn_img
+            btn.pack(side="left", padx=(10, 0))
+            btn.bind("<Button-1>", lambda e: webbrowser.open("https://www.paypal.com/donate?hosted_button_id=JMPWGD5VA32UW"))
 
-        def copy_nequi(e=None):
-            self.clipboard_clear()
-            self.clipboard_append("regerman78@gmail.com")
-            self._show_tooltip_temporal("Email copied to clipboard" if getattr(self, 'english_mode', False) else "Correo copiado al portapapeles", event=e)
+        ttk.Separator(pad, orient='horizontal').pack(fill='x', pady=8)
 
-        nequi_label = tk.Label(pad, text="regerman78@gmail.com", font=("Segoe UI", 10), justify="center", fg="blue", cursor="hand2")
-        nequi_label.bind("<Button-1>", copy_nequi)
-        nequi_label.pack(pady=(0, 6))
-        ttk.Label(pad, text="Red*** Var***", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 6))
-        ttk.Separator(pad, orient='horizontal').pack(fill='x', pady=10)
-        ttk.Label(pad, text="Tether USDT (TRC20):", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 6))
+        # --- NEQUI ---
+        nequi_frame = ttk.Frame(pad)
+        nequi_frame.pack(fill="x", pady=(0, 6))
+        nequi_row = ttk.Frame(nequi_frame)
+        nequi_row.pack(anchor="center")
+        nequi_logo = load_image("BAUL/nequi.jpg", max_width=60, max_height=40)
+        if nequi_logo:
+            lbl = tk.Label(nequi_row, image=nequi_logo)
+            lbl.image = nequi_logo
+            lbl.pack(side="left", padx=(0, 10))
+        nequi_right = ttk.Frame(nequi_row)
+        nequi_right.pack(side="left", fill="x", expand=True)
+        ttk.Label(nequi_right, text="Donate with Nequi:" if eng else "Donaciones por Nequi:", font=("Segoe UI", 10, "bold")).pack(anchor="w")
 
-        def load_qr():
+        def open_nequi_checkout(e=None):
             try:
-                import urllib.request
-                from io import BytesIO
-                with urllib.request.urlopen("https://postimg.cc/MvbVg5wT") as response:
-                    img_data = response.read()
-                    img = Image.open(BytesIO(img_data))
-                    img = img.resize((150, 150), Image.LANCZOS)
-                    return ImageTk.PhotoImage(img)
+                webbrowser.open("https://checkout.nequi.wompi.co/method")
             except Exception:
-                return None
+                self.clipboard_clear()
+                self.clipboard_append("https://checkout.nequi.wompi.co/method")
 
-        qr_container = ttk.Frame(pad)
-        qr_container.pack(pady=(0, 6))
+        nequi_link = tk.Label(nequi_right, text="https://checkout.nequi.wompi.co/method", font=("Segoe UI", 9), fg="blue", cursor="hand2")
+        nequi_link.bind("<Button-1>", open_nequi_checkout)
+        nequi_link.pack(anchor="w")
+
+        ttk.Separator(pad, orient='horizontal').pack(fill='x', pady=8)
+
+        # --- TETHER ---
+        tether_frame = ttk.Frame(pad)
+        tether_frame.pack(fill="x", pady=(0, 6))
+        tether_row = ttk.Frame(tether_frame)
+        tether_row.pack(anchor="center")
+        tether_logo = load_image("BAUL/Tether.png", max_width=50, max_height=50)
+        if tether_logo:
+            lbl = tk.Label(tether_row, image=tether_logo)
+            lbl.image = tether_logo
+            lbl.pack(side="left", padx=(0, 10))
+        tether_right = ttk.Frame(tether_row)
+        tether_right.pack(side="left", fill="x", expand=True)
+        ttk.Label(tether_right, text="Tether USDT (TRC20):", font=("Segoe UI", 10, "bold")).pack(anchor="w")
+
+        qr_container = ttk.Frame(tether_right)
+        qr_container.pack(anchor="w")
         threading.Thread(target=lambda: self._load_qr_async(qr_container, w), daemon=True).start()
 
         def copy_usdt(e=None):
@@ -1852,32 +1895,18 @@ class Click2FoldersApp(tk.Tk):
             self.clipboard_append("TFKbpPK5n5Dv3NV3svEDAyd68fxNyUzmDn")
             self._show_tooltip_temporal("USDT address copied to clipboard" if getattr(self, 'english_mode', False) else "Dirección USDT copiada al portapapeles", event=e)
 
-        usdt_label = tk.Label(pad, text="TFKbpPK5n5Dv3NV3svEDAyd68fxNyUzmDn",
-                              font=("Segoe UI", 9), justify="center", fg="blue", cursor="hand2")
+        usdt_label = tk.Label(tether_right, text="TFKbpPK5n5Dv3NV3svEDAyd68fxNyUzmDn", font=("Segoe UI", 9), fg="blue", cursor="hand2")
         usdt_label.bind("<Button-1>", copy_usdt)
-        usdt_label.pack(pady=(0, 6))
-        ttk.Separator(pad, orient='horizontal').pack(fill='x', pady=10)
-        ttk.Label(pad, text="Developer's Whatsapp" if eng else "Whatsapp Desarrollador Germán:", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 6))
+        usdt_label.pack(anchor="w")
 
-        def open_whatsapp(e=None):
-            try:
-                webbrowser.open("https://bit.ly/click2folders")
-            except Exception:
-                self.clipboard_clear()
-                self.clipboard_append("https://bit.ly/click2folders")
+        ttk.Separator(pad, orient='horizontal').pack(fill='x', pady=8)
 
-        whatsapp_label = tk.Label(pad, text="https://bit.ly/click2folders",
-                                  font=("Segoe UI", 10), justify="center", fg="blue", cursor="hand2")
-        whatsapp_label.bind("<Button-1>", open_whatsapp)
-        whatsapp_label.pack(pady=(0, 6))
-        ttk.Separator(pad, orient='horizontal').pack(fill='x', pady=10)
-        ttk.Label(pad, text="", font=("Segoe UI", 10)).pack()
+        # Pie
         ttk.Label(pad, text="Thank you for your support!" if eng else "¡Gracias por tu apoyo!", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 6))
-        ttk.Label(pad, text="", font=("Segoe UI", 10)).pack()
-        ttk.Label(pad, text="Developed by: Germán Vargas" if eng else "Desarrollado por: Germán Vargas", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 6))
-        ttk.Label(pad, text="© 2026 Click2Folders. All rights reserved." if eng else "© 2026 Click2Folders. Todos los derechos reservados.", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 6))
+        ttk.Label(pad, text="Developed by: Germán Vargas" if eng else "Desarrollado por: Germán Vargas", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 2))
+        ttk.Label(pad, text="© 2026 Click2Folders. All rights reserved." if eng else "© 2026 Click2Folders. Todos los derechos reservados.", font=("Segoe UI", 9), justify="center").pack(pady=(0, 6))
 
-        # === CENTRADO Y FOCO FUERTE ===
+        # === CENTRADO Y FOCO ===
         def finalize_window():
             w.update_idletasks()
             sw = w.winfo_screenwidth()
@@ -1899,7 +1928,19 @@ class Click2FoldersApp(tk.Tk):
         if count > 0 and count % 5 == 0:
             self.on_donate()
 
-    # === ESTAS DOS FUNCIONES DEBEN ESTAR FUERA DE on_donate ===
+    # === FUNCIONES AUXILIARES PARA DONACIONES ===
+    def _load_donation_img_async(self, container, url, parent, display_fn):
+        try:
+            import urllib.request
+            from io import BytesIO
+            with urllib.request.urlopen(url) as response:
+                img_data = response.read()
+                img = Image.open(BytesIO(img_data))
+                photo = ImageTk.PhotoImage(img)
+                self.after(0, lambda: display_fn(container, photo, parent))
+        except Exception:
+            pass
+
     def _load_qr_async(self, container, parent):
         try:
             import urllib.request
@@ -1918,6 +1959,19 @@ class Click2FoldersApp(tk.Tk):
         qr_label.image = qr_photo
         qr_label.pack()
         self.after(100, lambda: center_window(parent, self))
+
+    def _load_paypal_async(self, container, parent):
+        try:
+            import urllib.request
+            from io import BytesIO
+            with urllib.request.urlopen("https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif") as response:
+                img_data = response.read()
+                img = Image.open(BytesIO(img_data))
+                photo = ImageTk.PhotoImage(img)
+                self.after(0, lambda: self._display_paypal_btn(container, photo, parent))
+        except Exception:
+            pass
+
     def _show_image_window(self, parent, img_path):
         w = tk.Toplevel(parent)
         w.resizable(False, False)
