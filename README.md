@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="BAUL/Logo Click2Folders/Logo Final.png" alt="Click2Folders Logo" width="200"/>
+  <img src="Logo Final.png" alt="Click2Folders Logo" width="200"/>
 </p>
 
 <h1 align="center">Click2Folders</h1>
