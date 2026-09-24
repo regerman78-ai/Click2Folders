@@ -4,7 +4,16 @@ build/
 dist/
 *.exe
 *.mp4
-*.jpg
 *.ico
 BACKUP CODIGO/
 BAUL/
+Backup Claude/
+NOTAS_SESION.md
+*.spec
+compilar.bat
+installer.iss
+installer/
+
+# Excepción: screenshots
+!screenshots/
+!screenshots/*.jpg
