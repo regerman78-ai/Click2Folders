@@ -37,9 +37,18 @@ Click2Folders detects the dates of your photos and videos to create year folders
   <img src="screenshots/Despues.jpg" alt="Después de organizar" width="700"/>
 </p>
 
+### Instalación - SmartScreen / Installation - SmartScreen
+<p align="center">
+  <img src="screenshots/smartscreen-1.jpg" alt="SmartScreen paso 1" width="500"/>
+</p>
+
+<p align="center">
+  <img src="screenshots/smartscreen-2.jpg" alt="SmartScreen paso 2" width="500"/>
+</p>
+
 ### Ventana Principal / Main Window
 <p align="center">
-  <img src="screenshots/main-window.jpg" alt="Ventana Principal" width="700"/>
+  <img src="screenshots/main-modos.jpg" alt="Ventana Principal con modos" width="700"/>
 </p>
 
 ### Carpetas Cargadas / Folders Loaded
