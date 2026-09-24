@@ -5,7 +5,7 @@
 <h1 align="center">Click2Folders</h1>
 
 <p align="center">
-  <b>Organizador Cronológico de Fotos y Video</b><br>
+  <b>Organizador Cronológico de Fotos y Videos</b><br>
   <i>Chronological Photo & Video Organizer</i>
 </p>
 
@@ -116,7 +116,7 @@ If the program is useful to you, consider making a donation to support its devel
 [![Donate with PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/donate?hosted_button_id=JMPWGD5VA32UW)
 
 ### Nequi (Colombia)
-Donaciones por Nequi: **https://checkout.nequi.wompi.co/method**
+Donaciones por Nequi: **https://checkout.nequi.wompi.co/l/EYGaPV**
 
 ### Tether USDT (TRC20)
 Dirección: `TFKbpPK5n5Dv3NV3svEDAyd68fxNyUzmDn`
