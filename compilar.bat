@@ -15,6 +15,13 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: Verifica que customtkinter esté instalado
+python -c "import customtkinter" 2>nul
+if %errorlevel% neq 0 (
+    echo [INFO] Instalando customtkinter...
+    pip install customtkinter
+)
+
 :: Verifica que el .spec exista
 if not exist "click2folders.spec" (
     echo [ERROR] No se encontró click2folders.spec

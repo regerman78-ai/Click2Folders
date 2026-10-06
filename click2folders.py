@@ -1,7 +1,7 @@
 # -- coding: utf-8 --
 """
 Click2Folders - Organizador automático de fotos y videos
-Versión: v1.8.49
+Versión: v1.10.40
 """
 import os
 import re
@@ -16,13 +16,23 @@ import webbrowser
 from datetime import datetime, timedelta
 from collections import defaultdict
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox
 from concurrent.futures import ThreadPoolExecutor
+import customtkinter as ctk
+
+# === ESTILO NEOFORMISMO ===
+ctk.set_appearance_mode("light")
+ctk.set_default_color_theme("blue")
 
 # Variables de la aplicación
 APP_NAME = "Click2Folders"
-APP_VERSION = "v1.8.49"
-WINDOW_TITLE = f"Click2Folders - Organizador Automático de Fotos y Videos {APP_VERSION}"
+APP_VERSION = "v1.10.40"
+GITHUB_REPO = "regerman78-ai/Click2Folders"
+GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
+GITHUB_RELEASES_URL = f"{GITHUB_URL}/releases"
+GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+WINDOW_TITLE = f"Click2Folders - Organizador Cronológico de Fotos y Videos {APP_VERSION}"
 ICON_FILE = "favicon.ico"
 base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 
@@ -52,25 +62,94 @@ except Exception:
 
 # --- Funciones utilitarias (sin cambios) ---
 def center_window(win, parent=None):
-    win.update_idletasks()
-    if parent is None:
+    try:
+        win.update_idletasks()
+        withdrawn = False
+        try:
+            withdrawn = str(win.state()) == 'withdrawn'
+        except Exception:
+            withdrawn = False
+        if withdrawn:
+            # Una ventana oculta reporta winfo_width()=200x200 (default de Tk),
+            # no su tamaño real: medir por req + minsize para NO tener que
+            # re-centrar (y saltar) después de mostrarse.
+            ww = win.winfo_reqwidth()
+            wh = win.winfo_reqheight()
+            try:
+                nums = re.findall(r'-?\d+', str(win.tk.call('wm', 'minsize', win)))
+                if len(nums) >= 2:
+                    ww = max(ww, int(nums[0]))
+                    wh = max(wh, int(nums[1]))
+            except Exception:
+                pass
+        else:
+            ww = win.winfo_width()
+            wh = win.winfo_height()
+            if ww <= 1:
+                ww = win.winfo_reqwidth()
+            if wh <= 1:
+                wh = win.winfo_reqheight()
+        if ww <= 1:
+            ww = 480
+        if wh <= 1:
+            wh = 480
         sw = win.winfo_screenwidth()
         sh = win.winfo_screenheight()
-        x = (sw - win.winfo_width()) // 2
-        y = (sh - win.winfo_height()) // 2
-    else:
-        px = parent.winfo_rootx()
-        py = parent.winfo_rooty()
-        pw = parent.winfo_width()
-        ph = parent.winfo_height()
-        x = px + (pw - win.winfo_width()) // 2
-        y = py + (ph - win.winfo_height()) // 2
-    win.geometry(f"+{x}+{y}")
+        x = (sw - ww) // 2
+        y = (sh - wh) // 2
+        win.geometry(f"+{x}+{y}")
+        # Seguridad: re-centra con el tamaño real si algo cambió al mapear.
+        # Con la medida correcta calcula la misma posición => no hay salto.
+        win.after(100, lambda: _recenter_window(win))
+    except Exception:
+        pass
+
+def _recenter_window(win):
+    try:
+        if not win.winfo_exists():
+            return
+        ww = win.winfo_width()
+        wh = win.winfo_height()
+        if ww <= 1 or wh <= 1:
+            return
+        sw = win.winfo_screenwidth()
+        sh = win.winfo_screenheight()
+        x = (sw - ww) // 2
+        y = (sh - wh) // 2
+        win.geometry(f"+{x}+{y}")
+    except Exception:
+        pass
+
+# Pares de texto de estado ES/EN para que el mensaje naranja
+# siempre se muestre en el idioma actual aunque se cambie en caliente
+_STATUS_PAIRS = [
+    ("Por favor espere", "Please wait"),
+    ("Deshaciendo organización...", "Undoing organization..."),
+]
+
+def status_text(msg, english):
+    for es, en in _STATUS_PAIRS:
+        if msg in (es, en):
+            return en if english else es
+    return msg
 
 def safe_icon(win, icon_path=ICON_FILE):
     icon_full_path = os.path.join(base_path, icon_path)
     try:
         win.iconbitmap(default=icon_full_path)
+    except Exception:
+        pass
+    try:
+        if PIL_OK:
+            img = Image.open(icon_full_path)
+            img = img.resize((32, 32), Image.LANCZOS)
+            photo = ImageTk.PhotoImage(img)
+            win.iconphoto(False, photo)
+            win._icon_ref = photo
+        else:
+            photo = tk.PhotoImage(file=icon_full_path)
+            win.iconphoto(False, photo)
+            win._icon_ref = photo
     except Exception:
         pass
 
@@ -87,16 +166,62 @@ def load_image(path, max_width=None, max_height=None):
         return None
 
 def ensure_single_instance():
-    lock_file = os.path.join(tempfile.gettempdir(), ".click2folders.lock")
-    if os.path.exists(lock_file):
-        os.remove(lock_file)
-    with open(lock_file, "w") as f:
-        f.write(str(os.getpid()))
-    return True
+    """Mutex de Windows: si ya hay una instancia, enfoca su ventana y sale.
+    El mutex se libera solo al cerrar el proceso (sin archivos PID obsoletos)."""
+    global _MUTEX_HANDLE
+    try:
+        import ctypes
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateMutexW.argtypes = (ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p)
+        kernel32.CreateMutexW.restype = ctypes.c_void_p
+        ERROR_ALREADY_EXISTS = 183
+        handle = kernel32.CreateMutexW(None, False, "Click2Folders_SingleInstance_v1")
+        if ctypes.get_last_error() == ERROR_ALREADY_EXISTS:
+            _focus_existing_window()
+            try:
+                kernel32.CloseHandle(handle)
+            except Exception:
+                pass
+            return False
+        _MUTEX_HANDLE = handle  # mantenerlo vivo durante la vida del proceso
+        return True
+    except Exception:
+        return True
+
+def _focus_existing_window():
+    """Busca la ventana principal (en español o inglés) y la trae al frente."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        found = []
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def _cb(hwnd, _lparam):
+            try:
+                if user32.IsWindowVisible(hwnd):
+                    buf = ctypes.create_unicode_buffer(1024)
+                    user32.GetWindowTextW(hwnd, buf, 1024)
+                    if buf.value.startswith("Click2Folders"):
+                        found.append(hwnd)
+            except Exception:
+                pass
+            return True
+        user32.EnumWindows(_cb, 0)
+        for hwnd in found:
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+            user32.BringWindowToTop(hwnd)
+            if not user32.SetForegroundWindow(hwnd):
+                # Windows bloquea el foreground: simular tecla Alt lo permite
+                user32.keybd_event(0x12, 0, 0, 0)
+                user32.SetForegroundWindow(hwnd)
+                user32.keybd_event(0x12, 0, 0x0002, 0)
+        return bool(found)
+    except Exception:
+        return False
 
 def _get_launch_count():
-    """Lee y actualiza el contador de lanzamientos para mostrar donaciones cada 5 aperturas."""
-    count_file = os.path.join(tempfile.gettempdir(), ".click2folders_launch_count.dat")
+    """Lee y actualiza el contador de lanzamientos para mostrar donaciones cada 2 aperturas."""
+    count_file = os.path.join(os.path.expanduser("~"), ".click2folders_launch_count.dat")
     try:
         if os.path.exists(count_file):
             with open(count_file, "r") as f:
@@ -901,6 +1026,309 @@ def iter_all_files_including_organized(folder):
 def count_all_files_including_organized(folder):
     return sum(1 for _ in iter_all_files_including_organized(folder))
 
+def _long_path(p):
+    """En Windows antepone el prefijo especial que usa Windows para rutas
+    largas, evitando que se recorten al limite clasico de 260 caracteres.
+    Es facil llegar a ese limite con carpetas de ano/mes y nombres de
+    archivo largos. En otros sistemas operativos no cambia nada."""
+    if os.name != "nt":
+        return p
+    try:
+        ap = os.path.abspath(p)
+    except Exception:
+        return p
+    prefix = "\\\\?\\"
+    if ap.startswith(prefix):
+        return ap
+    if ap.startswith("\\\\"):
+        return prefix + "UNC\\" + ap[2:]
+    return prefix + ap
+
+def count_folder_contents(folder):
+    """Cuenta las subcarpetas directas de 'folder' y el total de archivos que
+    contiene, sueltos en la raiz o dentro de cualquiera de sus subcarpetas
+    (a cualquier profundidad)."""
+    folder_lp = _long_path(folder)
+    subfolders = 0
+    try:
+        for entry in os.scandir(folder_lp):
+            if entry.is_dir():
+                subfolders += 1
+    except Exception:
+        pass
+    files = 0
+    try:
+        for _root, _dirs, filenames in os.walk(folder_lp):
+            files += sum(1 for fn in filenames if not fn.startswith('.'))
+    except Exception:
+        pass
+    return files, subfolders
+
+def get_status_text(folder, english=False):
+    """Generate status text showing folder contents."""
+    files, subfolders = count_folder_contents(folder)
+    parts = []
+    if subfolders > 0:
+        parts.append(f"{subfolders} {'folders' if english else 'carpetas'}")
+    if files > 0:
+        parts.append(f"{files} {'files' if english else 'archivos'}")
+    if parts:
+        return ", ".join(parts)
+    return "0 items"
+
+class _ColumnResizer:
+    """Permite redimensionar columnas del Treeview arrastrando los bordes."""
+
+    # Colores de las líneas divisorias verticales entre columnas
+    LINE_COLOR_HEAD = "#ffffff"   # blanco, sobre el encabezado azul
+    LINE_COLOR_BODY = "#9ca3af"   # gris, sobre las filas
+
+    def __init__(self, tree, columns, locked=("sel",)):
+        self.tree = tree
+        self.columns = list(columns)
+        # Columnas cuyo borde derecho es fijo: no se puede mover y no muestra el
+        # cursor de doble flecha (Sel solo tiene el checkbox). La línea sí se ve.
+        self._locked = {i for i, c in enumerate(self.columns) if c in locked}
+        self._drag_col = None
+        self._drag_start_x = 0
+        self._drag_start_width = 0
+        self._drag_start_status_width = 0
+        self._hit_margin = 6
+        self._lines = []          # pares (línea del encabezado, línea de las filas)
+        self._head_h = None       # alto del encabezado
+        self._last_sig = None
+        self._ok = False          # True cuando las líneas ya quedaron colocadas
+
+        self.tree.bind("<Motion>", self._on_motion, add="+")
+        self.tree.bind("<Button-1>", self._on_press, add="+")
+        self.tree.bind("<B1-Motion>", self._on_drag, add="+")
+        self.tree.bind("<ButtonRelease-1>", self._on_release, add="+")
+        self.tree.bind("<Leave>", lambda e: self.tree.configure(cursor=""), add="+")
+        self.tree.bind("<Configure>", lambda e: self.tree.after_idle(self.update_lines), add="+")
+        self.tree.bind("<Map>", lambda e: self.tree.after_idle(self.update_lines), add="+")
+        # Al abrirse la ventana por primera vez, si las líneas aún no están, se reintenta
+        self.tree.bind("<Expose>", lambda e: (not self._ok) and self.tree.after_idle(self.update_lines), add="+")
+        self.tree.after(150, self._watch)
+
+    # ------------------------------------------------------------------
+    # Líneas divisorias verticales (una por cada borde entre columnas).
+    # Son marcos de 1px puestos justo sobre la unión de las columnas: blancos
+    # en el encabezado y grises en las filas. No hay línea en el borde derecho
+    # de la última columna (Estado) porque ahí no se puede mover nada.
+    # ------------------------------------------------------------------
+    class _FwdEvent:
+        """Evento simplificado para pasar al Treeview los clics hechos sobre una línea."""
+        def __init__(self, x, y, x_root, y_root):
+            self.x, self.y, self.x_root, self.y_root = x, y, x_root, y_root
+
+    def _forward(self, handler):
+        def _h(e):
+            ev = self._FwdEvent(e.x_root - self.tree.winfo_rootx(),
+                                e.y_root - self.tree.winfo_rooty(),
+                                e.x_root, e.y_root)
+            handler(ev)
+            return "break"
+        return _h
+
+    def _make_line(self, color, locked=False):
+        if locked:
+            # Línea fija: solo se ve; cursor normal y sin arrastre
+            return tk.Frame(self.tree, width=1, height=1, bg=color, bd=0,
+                            highlightthickness=0, cursor="arrow")
+        line = tk.Frame(self.tree, width=1, height=1, bg=color, bd=0,
+                        highlightthickness=0, cursor="sb_h_double_arrow")
+        # Un clic o arrastre sobre la línea funciona igual que sobre el borde de la columna
+        line.bind("<Motion>", self._forward(self._on_motion))
+        line.bind("<ButtonPress-1>", self._forward(self._on_press))
+        line.bind("<B1-Motion>", self._forward(self._on_drag))
+        line.bind("<ButtonRelease-1>", self._forward(self._on_release))
+        return line
+
+    def _header_height(self):
+        """Mide el alto del encabezado. Devuelve None si el Treeview aún no está dibujado."""
+        h = 0
+        try:
+            while h < 80 and self.tree.identify_region(5, h) == "heading":
+                h += 1
+            if not (10 < h < 80):
+                # Plan B: la primera fila empieza justo debajo del encabezado
+                h = 0
+                children = self.tree.get_children()
+                if children:
+                    box = self.tree.bbox(children[0])
+                    if box and 10 < box[1] < 80:
+                        h = box[1]
+        except Exception:
+            h = 0
+        if 10 < h < 80:
+            self._head_h = h
+            return h
+        return self._head_h    # última medida buena (o None si nunca se pudo medir)
+
+    def update_lines(self):
+        """Coloca las líneas sobre las uniones. Devuelve True si quedaron colocadas."""
+        ok = False
+        try:
+            tw = self.tree.winfo_width()
+            th = self.tree.winfo_height()
+            hh = self._header_height()
+            if tw > 10 and th > 10 and hh:
+                positions = self._get_positions()
+                while len(self._lines) < len(positions):
+                    fixed = len(self._lines) in self._locked
+                    self._lines.append((self._make_line(self.LINE_COLOR_HEAD, fixed),
+                                        self._make_line(self.LINE_COLOR_BODY, fixed)))
+                for (line_head, line_body), px in zip(self._lines, positions):
+                    x = px - 1     # último píxel de la columna, justo en la unión con la siguiente
+                    if 0 < x < tw - 1:
+                        line_head.place(x=x, y=0, width=1, height=hh)
+                        line_body.place(x=x, y=hh, width=1, height=max(1, th - hh))
+                    else:
+                        line_head.place_forget()
+                        line_body.place_forget()
+                ok = True
+        except Exception:
+            ok = False
+        self._ok = ok
+        return ok
+
+    def _watch(self):
+        """Cada 150 ms revisa si cambió el ancho de alguna columna (o si las líneas
+        todavía no se han podido colocar, por ejemplo al abrir el programa) y las reubica."""
+        try:
+            sig = (tuple(self.tree.column(c)["width"] for c in self.columns),
+                   self.tree.winfo_width(), self.tree.winfo_height())
+            if sig != self._last_sig or not self._ok:
+                if self.update_lines():
+                    self._last_sig = sig
+            self.tree.after(150, self._watch)
+        except Exception:
+            pass    # el Treeview ya no existe
+
+    def _get_positions(self):
+        positions = []
+        x = 0
+        for i, col in enumerate(self.columns):
+            x += self.tree.column(col)["width"]
+            if i < len(self.columns) - 1:
+                positions.append(x)
+        return positions
+
+    def _on_motion(self, event):
+        if self._drag_col is not None:
+            return
+        x = event.x
+        for i, px in enumerate(self._get_positions()):
+            if i in self._locked:
+                continue    # borde fijo (Sel): no muestra el cursor de doble flecha
+            if abs(x - px) <= self._hit_margin:
+                self.tree.configure(cursor="sb_h_double_arrow")
+                return
+        self.tree.configure(cursor="")
+        # Bordes que no se pueden mover (derecho de Estado y el de Sel): se corta el
+        # evento para que Tk no vuelva a mostrar el cursor de doble flecha
+        if self._is_fixed_edge(event.x, event.y):
+            return "break"
+
+    def _is_fixed_edge(self, x, y):
+        """True si (x, y) está sobre un borde que no se puede mover: el borde derecho
+        de la última columna (Estado) o el de una columna fija (Sel)."""
+        if self.tree.identify_region(x, y) != "separator":
+            return False
+        edges = self._get_positions() + [sum(self.tree.column(c)["width"] for c in self.columns)]
+        nearest = min(range(len(edges)), key=lambda i: abs(x - edges[i]))
+        return nearest == len(edges) - 1 or nearest in self._locked
+
+    def _on_press(self, event):
+        positions = self._get_positions()
+        if not positions:
+            return None
+        x = event.x
+        region = self.tree.identify_region(event.x, event.y)
+        # Borde (separador) más cercano al punto donde se hizo clic
+        nearest = min(range(len(positions)), key=lambda i: abs(x - positions[i]))
+        dist = abs(x - positions[nearest])
+        # En el encabezado el separador es un poco más ancho que en las filas
+        margin = max(self._hit_margin, 12) if region == "separator" else self._hit_margin
+        if nearest in self._locked:
+            # Borde fijo (Sel): no se arrastra. En el encabezado se bloquea el
+            # redimensionado nativo de Tk; en las filas el clic sigue su curso normal
+            # (así el checkbox se marca aunque se haga clic cerca de la línea).
+            if region == "separator" and dist <= margin:
+                return "break"
+            return None
+        if dist <= margin:
+            self._drag_col = nearest
+            self._drag_start_x = event.x_root
+            self._drag_start_width = self.tree.column(self.columns[nearest])["width"]
+            self._drag_start_status_width = self.tree.column("status")["width"]
+            return "break"
+        if region == "separator":
+            # Separador que no se puede mover (borde exterior): se bloquea el
+            # redimensionado nativo para que no rompa el ajuste de columnas
+            return "break"
+        return None
+
+    def _on_drag(self, event):
+        if self._drag_col is None:
+            return
+        dx = event.x_root - self._drag_start_x
+        col = self.columns[self._drag_col]
+        try:
+            min_w = int(self.tree.column(col)["minwidth"])
+        except Exception:
+            min_w = 30
+        min_w = max(30, min_w)
+        new_width = max(min_w, self._drag_start_width + dx)
+        try:
+            tw = self.tree.winfo_width()
+            if tw > 10:
+                # Evita que Estado quede más angosta de 60px (no se sale del treeview)
+                fixed = sum(self.tree.column(c)["width"] for c in self.columns
+                            if c != "status" and c != col)
+                max_width = tw - fixed - 60
+                new_width = max(min_w, min(new_width, max_width))
+            self.tree.column(col, width=new_width)
+            other = sum(self.tree.column(c)["width"] for c in self.columns if c != "status")
+            new_status = max(60, tw - other)
+            self.tree.column("status", width=new_status)
+        except Exception:
+            pass
+        self.update_lines()
+
+    def _on_release(self, event):
+        self._drag_col = None
+        self.after_correct_last_col()
+        # Al soltar el clic, Tk vuelve a poner el cursor de doble flecha sobre cualquier
+        # separador, incluido el borde derecho de Estado (que no se puede mover).
+        # Se corrige justo después de que Tk termine de procesar el evento.
+        x, y = event.x, event.y
+
+        def _fix_cursor():
+            try:
+                if self._is_fixed_edge(x, y):
+                    self.tree.configure(cursor="")
+            except Exception:
+                pass
+        self.tree.after_idle(_fix_cursor)
+
+    def after_correct_last_col(self):
+        def _correct():
+            try:
+                tw = self.tree.winfo_width()
+                if tw <= 10:
+                    return
+                other = sum(self.tree.column(c)["width"] for c in self.columns if c != "status")
+                correct_status = max(60, tw - other)
+                current = self.tree.column("status")["width"]
+                if current != correct_status:
+                    self.tree.column("status", width=correct_status)
+                self.update_lines()
+            except Exception:
+                pass
+        self.tree.after_idle(_correct)
+
+
 class OneShotWindow:
     def __init__(self):
         self.win = None
@@ -915,6 +1343,7 @@ class OneShotWindow:
             except Exception:
                 pass
         self.win = None
+
 
 class Click2FoldersApp(tk.Tk):
     MODES = {
@@ -932,25 +1361,12 @@ class Click2FoldersApp(tk.Tk):
 
     def __init__(self):
         super().__init__()
+        self.withdraw()
         self.title(WINDOW_TITLE)
-        self.minsize(900, 600)
-        # Tema neutro: dejar que ttk use el tema del sistema
-        # Usar tema nativo de Windows para evitar parches de color
-        _style = ttk.Style()
-        try:
-            _style.theme_use("winnative")
-        except Exception:
-            pass
-        _style.configure("TCombobox", fieldbackground="white", background="white")
-        _style.map("TCombobox", fieldbackground=[("readonly", "white")])
+        self.minsize(900, 620)
+        self.configure(bg="#f0f4f8")
         safe_icon(self)
-        self.withdraw()              # Ocultar temporalmente
         
-        # Configurar tamaño y centrar
-        self.geometry("900x600")     # Establecer tamaño
-        self.update_idletasks()
-        center_window(self)          # Centrar correctamente
-        self.deiconify()
         if not ensure_single_instance():
             sys.exit(0)
         # Nota: Shell.Application se crea por-hilo (ver _get_thread_shell),
@@ -965,6 +1381,7 @@ class Click2FoldersApp(tk.Tk):
         self.moved_ops = []
         self.created_dirs = set()
         self.total_analyzed = 0
+        self.total_organized = 0
         self.total_dirs_created = 0
         self.start_time = None
         self.processed_roots = set()
@@ -974,6 +1391,10 @@ class Click2FoldersApp(tk.Tk):
         self.limits_win = OneShotWindow()
         self.support_win = OneShotWindow()
         self.donate_win = OneShotWindow()
+        self._has_update = False
+        self._update_checked = False
+        self._donate_shown = False
+        self._donate_closed = False
         self.toolbar = None
         self.is_processing = False
         self.english_mode = False
@@ -981,18 +1402,30 @@ class Click2FoldersApp(tk.Tk):
         self.btn_start = None
         self.btn_undo = None
         self.btn_remove = None
+        self._live_popups = []
         self._build_toolbar()
         self._build_options()
         self._build_queue_area()
         self._build_progress_bar()
-        self._build_log_area()
         self._build_counters_bar()
+        self._build_log_area()
         self.overlay = None
         self.overlay_text = None
         self.marquee = None
         self._update_undo_button_state()
-        self.deiconify()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        # Centrar y mostrar ventana
+        self.update_idletasks()
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        w = 900
+        h = 620
+        old_h = 580
+        x = (sw - w) // 2
+        y = (sh - old_h) // 2 - (h - old_h)
+        self.geometry(f"{w}x{h}+{x}+{y}")
+        self.deiconify()
+        self.after(10, self._fit_folder)
         # Mostrar donaciones cada 5 lanzamientos
         self.after(500, self._check_launch_donation)
 
@@ -1001,17 +1434,30 @@ class Click2FoldersApp(tk.Tk):
     def _build_toolbar(self):
         if self.toolbar:
             self.toolbar.destroy()
-        self.toolbar = ttk.Frame(self, padding=(8, 8, 8, 0))
-        self.toolbar.pack(fill="x")
+        self.toolbar = ctk.CTkFrame(self, fg_color="#e8eef5", corner_radius=12)
+        self.toolbar.pack(fill="x", padx=10, pady=(5, 3))
         eng = getattr(self, 'english_mode', False)
-        self.btn_tutorial = ttk.Button(self.toolbar, text="Tutorial", command=self.on_tutorial)
-        self.btn_tutorial.pack(side="left", padx=(0,6))
-        self.btn_support = ttk.Button(self.toolbar, text="Support" if eng else "Soporte", command=self.on_support)
-        self.btn_support.pack(side="left", padx=6)
-        self.btn_donate = ttk.Button(self.toolbar, text="Donations" if eng else "Donaciones", command=self.on_donate)
-        self.btn_donate.pack(side="left", padx=6)
-        self.btn_lang = ttk.Button(self.toolbar, text="Spanish Style" if eng else "Modo Ingles", command=self._toggle_lang)
-        self.btn_lang.pack(side="left", padx=6)
+        
+        # Botones del toolbar con estilo neoformismo
+        btn_style = {"corner_radius": 8, "height": 32, "font": ("Segoe UI", 12, "bold"),
+                     "hover_color": "#3b82f6", "text_color": "white"}
+        
+        self.btn_tutorial = ctk.CTkButton(self.toolbar, text="Tutorial", 
+                                          fg_color="#3b82f6", command=self.on_tutorial, **btn_style)
+        self.btn_tutorial.pack(side="left", padx=(8, 4))
+        self.btn_support = ctk.CTkButton(self.toolbar, text="Support" if eng else "Soporte", 
+                                         fg_color="#10b981", command=self.on_support, **btn_style)
+        self.btn_support.pack(side="left", padx=4)
+        self.btn_lang = ctk.CTkButton(self.toolbar, text="Traducir al Español" if eng else "Translate to English", 
+                                       fg_color="#8b5cf6", command=self._toggle_lang, **btn_style)
+        self.btn_lang.pack(side="left", padx=4)
+        self.btn_donate = ctk.CTkButton(self.toolbar, text="Donations" if eng else "Donaciones", 
+                                        fg_color="#f59e0b", command=self.on_donate, **btn_style)
+        self.btn_donate.pack(side="left", padx=4)
+        self.btn_updates = ctk.CTkButton(self.toolbar, text="Actualización" if not eng else "Update",
+                                          fg_color="#ef4444",
+                                          command=lambda: webbrowser.open(GITHUB_RELEASES_URL), **btn_style)
+        self.btn_updates.pack(side="left", padx=(4, 8))
         self._lang_tooltip = None
         def _show_lang_tip(e):
             if self._lang_tooltip: return
@@ -1023,8 +1469,8 @@ class Click2FoldersApp(tk.Tk):
                 txt = "Cambia de español a ingles la interfaz y al organizar\nnombra las subcarpetas de mes también en ingles:\n(1 January, 2 February...)"
             else:
                 txt = "Switches from English to Spanish interface and\nnames month subfolders in Spanish when organizing:\n(1 Enero, 2 Febrero...)"
-            tk.Label(tip, text=txt, background="#ffffcc",
-                     relief="solid", borderwidth=1, font=("Segoe UI", 9), padx=6, pady=4, justify="left").pack()
+            tk.Label(tip, text=txt, background="#fef3c7", fg="#92400e",
+                     relief="solid", borderwidth=1, font=("Segoe UI", 10), padx=8, pady=4, justify="left").pack()
             self._lang_tooltip = tip
         def _hide_lang_tip(e):
             if self._lang_tooltip:
@@ -1032,139 +1478,250 @@ class Click2FoldersApp(tk.Tk):
                 self._lang_tooltip = None
         self.btn_lang.bind("<Enter>", _show_lang_tip)
         self.btn_lang.bind("<Leave>", _hide_lang_tip)
-        
-        # self.lbl_version = ttk.Label(self.toolbar, text="Versión Premium", 
-        #                              font=("Segoe UI", 10, "bold"), foreground="red")
-        # self.lbl_version.pack(side="right")
 
     def _toggle_lang(self):
-        # Detectar ventanas abiertas antes de cambiar idioma
-        windows_to_reopen = []
-        if hasattr(self, 'donate_win') and self.donate_win.win:
-            windows_to_reopen.append('donate')
-        if hasattr(self, 'support_win') and self.support_win.win:
-            windows_to_reopen.append('support')
-        if hasattr(self, 'tutorial_win') and self.tutorial_win.win:
-            windows_to_reopen.append('tutorial')
-        
-        self.english_mode = not self.english_mode
-        eng = self.english_mode
-        
-        # Cerrar ventanas auxiliares abiertas
-        self._close_aux_windows()
-        
-        # Actualizar título de la ventana principal
-        self.title(f"Click2Folders - Automatic Photo & Video Organizer {APP_VERSION}" if eng else WINDOW_TITLE)
-        self.btn_support.config(text="Support" if eng else "Soporte")
-        self.btn_donate.config(text="Donations" if eng else "Donaciones")
-        self.btn_lang.config(text="Spanish Style" if eng else "Modo Ingles")
-        # Actualizar botones de la cola
-        self.btn_add_folder.config(text="Add folder" if eng else "Agregar carpeta")
-        self.btn_add_multiple.config(text="Add multiple folders" if eng else "Agregar varias carpetas")
-        self.btn_start.config(text="Organize" if eng else "Organizar")
-        self.btn_undo.config(text="Undo organization" if eng else "Deshacer organización")
-        # Actualizar encabezados del árbol
-        self.tree.heading("folder", text="Folder" if eng else "Carpeta")
-        self.tree.heading("status", text="Status" if eng else "Estado")
-        # Actualizar botones adicionales
-        self.btn_remove.config(text="Remove selected folders" if eng else "Quitar Carpetas Seleccionadas")
-        self.btn_sel_all.config(text="Select all" if eng else "Seleccionar todo")
-        self.btn_desel_all.config(text="Deselect all" if eng else "Deseleccionar todo")
-        self.lbl_cf_prefix.config(text="Organizing folder: " if eng else "Organizando Carpeta: ")
-        if self.lbl_cf_name:
-            self.lbl_cf_name.config(text="None" if eng else "Ninguna")
-        # Actualizar contadores
-        self.lbl_analyzed.configure(text=f"{'Files analyzed:' if eng else 'Archivos analizados:'} {self.total_analyzed}")
-        self.lbl_dirs.configure(text=f"{'Folders created:' if eng else 'Carpetas creadas:'} {self.total_dirs_created}")
-        self.lbl_time.configure(text=f"{'Elapsed time:' if eng else 'Tiempo transcurrido:'} 0m 0s")
-        # Actualizar combo de modos
-        self._rebuild_options_lang()
-        # Actualizar tooltip
-        if self._lang_tooltip:
-            self._lang_tooltip.destroy()
-            self._lang_tooltip = None
-        # Actualizar textos de estado del árbol
-        for iid in self.tree.get_children():
-            values = self.tree.item(iid, "values")
-            if len(values) >= 3:
-                current_status = values[2]
-                new_status = self._translate_status(current_status, eng)
-                if new_status != current_status:
+        if getattr(self, "is_processing", False):
+            return
+        try:
+            # Detectar ventanas abiertas antes de cambiar idioma
+            windows_to_reopen = []
+            if hasattr(self, 'donate_win') and self.donate_win.exists():
+                windows_to_reopen.append('donate')
+            if hasattr(self, 'support_win') and self.support_win.exists():
+                windows_to_reopen.append('support')
+            if hasattr(self, 'tutorial_win') and self.tutorial_win.exists():
+                windows_to_reopen.append('tutorial')
+            
+            self.english_mode = not self.english_mode
+            eng = self.english_mode
+            
+            # Cerrar ventanas auxiliares abiertas
+            self._close_aux_windows()
+            
+            # Actualizar título de la ventana principal
+            self.title(f"Click2Folders - Chronological Photo & Video Organizer {APP_VERSION}" if eng else f"Click2Folders - Organizador Cronológico de Fotos y Videos {APP_VERSION}")
+            self.btn_support.configure(text="Support" if eng else "Soporte")
+            self.btn_donate.configure(text="Donations" if eng else "Donaciones")
+            self.btn_lang.configure(text="Traducir al Español" if eng else "Translate to English")
+            self.btn_updates.configure(text="Actualización" if not eng else "Update")
+            # Actualizar botones de la cola
+            self.btn_add_folder.configure(text="Add folder" if eng else "Agregar carpeta")
+            self.btn_add_multiple.configure(text="Add multiple folders" if eng else "Agregar varias carpetas")
+            self.btn_start.configure(text="Organize" if eng else "Organizar")
+            self.btn_undo.configure(text="Undo organization" if eng else "Deshacer organización")
+            # Actualizar encabezados del árbol
+            self.tree.heading("folder", text="Folder" if eng else "Carpeta")
+            self.tree.heading("cantidad", text="Content" if eng else "Contenido")
+            self.tree.heading("status", text="Status" if eng else "Estado")
+            # Actualizar botones adicionales
+            self.btn_remove.configure(text="Remove selected folders" if eng else "Quitar Carpetas Seleccionadas")
+            self.btn_sel_all.configure(text="Select all" if eng else "Seleccionar todo")
+            self.btn_desel_all.configure(text="Deselect all" if eng else "Deseleccionar todo")
+            self.lbl_cf_prefix.configure(text="Organizing folder: " if eng else "Organizando Carpeta: ")
+            if self.lbl_cf_name:
+                self.lbl_cf_name.configure(text="None" if eng else "Ninguna")
+            # Actualizar contadores
+            self.lbl_analyzed.configure(text=f"{'Total files organized:' if eng else 'Total de archivos organizados:'} {self.total_organized}")
+            self.lbl_dirs.configure(text=f"{'Total folders created:' if eng else 'Total de carpetas creadas:'} {self.total_dirs_created}")
+            if self.start_time:
+                elapsed = time.time() - self.start_time
+                minutes = int(elapsed // 60)
+                seconds = int(elapsed % 60)
+                self.lbl_time.configure(text=f"{'Elapsed time:' if eng else 'Tiempo transcurrido:'} {minutes}m {seconds}s")
+            else:
+                self.lbl_time.configure(text=f"{'Elapsed time:' if eng else 'Tiempo transcurrido:'} 0m 0s")
+            # Actualizar combo de modos
+            self._rebuild_options_lang()
+            # Actualizar tooltip
+            if self._lang_tooltip:
+                self._lang_tooltip.destroy()
+                self._lang_tooltip = None
+            # Actualizar textos de estado y contenido del árbol
+            children = self.tree.get_children()
+            for iid in children:
+                values = self.tree.item(iid, "values")
+                if len(values) >= 4:
+                    current_status = str(values[3])
+                    new_status = self._translate_status(current_status, eng)
                     self.tree.set(iid, "status", new_status)
-        
-        # Reabrir ventanas que estaban abiertas
-        if 'donate' in windows_to_reopen:
-            self.after(100, self.on_donate)
-        if 'support' in windows_to_reopen:
-            self.after(100, self.on_support)
-        if 'tutorial' in windows_to_reopen:
-            self.after(100, self.on_tutorial)
+                    current_cant = str(values[2])
+                    new_cant = self._translate_cantidad_text(current_cant, eng)
+                    self.tree.set(iid, "cantidad", new_cant)
+
+            # Re-ajustar ancho de columnas con los textos ya traducidos
+            self.after(10, self._fit_folder)
+
+            # Traducir el texto que ya está escrito en el log
+            try:
+                self.txt.configure(state="normal")
+                scroll_pos = self.txt.yview()
+                current_log = self.txt.get("1.0", "end-1c")
+                if current_log.strip():
+                    new_log = self._translate_log_text(current_log, eng)
+                    self.txt.delete("1.0", "end")
+                    self.txt.insert("1.0", new_log)
+                    self.txt.yview_moveto(scroll_pos[0])
+                self.txt.configure(state="disabled")
+            except Exception:
+                pass
+
+            # Actualizar popups modales abiertos (Aviso, selección, fin de organización...)
+            alive_popups = []
+            for entry in getattr(self, '_live_popups', []):
+                try:
+                    if not entry["win"].winfo_exists():
+                        continue
+                    entry["win"].title(entry["title_en"] if eng else entry["title_es"])
+                    for wgt, t_es, t_en in entry["widgets"]:
+                        wgt.configure(text=t_en if eng else t_es)
+                    alive_popups.append(entry)
+                except Exception:
+                    pass
+            self._live_popups = alive_popups
+
+            # Reabrir ventanas que estaban abiertas
+            if 'donate' in windows_to_reopen:
+                self.after(100, self.on_donate)
+            if 'support' in windows_to_reopen:
+                self.after(100, self.on_support)
+            if 'tutorial' in windows_to_reopen:
+                self.after(100, self.on_tutorial)
+        except Exception:
+            pass
+
+    def _translate_cantidad_text(self, current_text, to_english):
+        """Traduce texto de la columna cantidad entre español e inglés."""
+        if not current_text:
+            return current_text
+        result = current_text
+        if to_english:
+            result = result.replace("Carpeta Vacía", "Empty Folder")
+            result = result.replace("carpetas", "folders")
+            result = result.replace("Archivos en total", "Total files")
+            result = result.replace("archivos organizados", "files organized")
+            result = result.replace("sin fecha", "without date")
+        else:
+            result = result.replace("Empty Folder", "Carpeta Vacía")
+            result = result.replace("folders", "carpetas")
+            result = result.replace("Total files", "Archivos en total")
+            result = result.replace("files organized", "archivos organizados")
+            result = result.replace("without date", "sin fecha")
+        return result
+
+    def _translate_log_text(self, text, to_english):
+        """Traduce las etiquetas fijas de los mensajes del log ya escritos
+        (p. ej. 'Organizando carpeta:', 'Sin fecha detectada:'), sin tocar
+        nombres de archivo o carpeta, fechas ni las lineas separadoras."""
+        pairs = [
+            ("carpeta(s) agregada(s)", "folder(s) added"),
+            ("Deshaciendo organización previa en:", "Undoing previous organization in:"),
+            ("Deshaciendo organización en:", "Undoing organization in:"),
+            ("Organización deshecha en:", "Organization undone in:"),
+            ("Error deshaciendo organización:", "Error undoing organization:"),
+            ("Iniciando organización desde cero...", "Starting organization from scratch..."),
+            ("Organizando carpeta:", "Organizing folder:"),
+            ("ARCHIVOS SIN FECHA DETECTADA:", "FILES WITHOUT DETECTED DATE:"),
+            ("Sin fecha detectada:", "No date detected:"),
+            ("Total de archivos organizados:", "Total files organized:"),
+            ("Total de archivos sin fecha detectable:", "Total files without date:"),
+            ("Total de carpetas creadas:", "Total folders created:"),
+            ("Fecha/hora final:", "Final date/time:"),
+            ("\u2014 se omite.", "\u2014 skipped."),
+            ("se omite.", "skipped."),
+            ("Movido:", "Moved:"),
+            ("Restaurando archivos...", "Restoring files..."),
+            ("Error restaurando", "Error restoring"),
+            ("Restauración de", "Restoration of"),
+            ("archivos completada.", "files completed."),
+            ("Inicio:", "Start:"),
+            ("Fin:", "End:"),
+            ("RESUMEN FINAL", "FINAL SUMMARY"),
+            ("archivos organizados", "files organized"),
+            ("sin fecha", "without date"),
+            ("carpetas creadas", "folders created"),
+        ]
+        result = text
+        if to_english:
+            for es, en in pairs:
+                result = result.replace(es, en)
+        else:
+            for es, en in pairs:
+                result = result.replace(en, es)
+        return result
 
     def _translate_status(self, current_status, to_english):
         if to_english:
-            m = re.match(r'^(\d+)\s+archivos para organizar$', current_status)
-            if m:
-                return f"{m.group(1)} files to organize"
+            # Handle new format: "X carpetas, Y archivos" or single items
+            result = current_status
+            result = result.replace("carpetas", "folders").replace("archivos", "files")
+            result = result.replace("carpeta", "folder").replace("archivo", "file")
+            result = result.replace("0 items", "0 items")
             mapping = {
-                "Organizado ✓": "Organized ✓",
+                "Organizado": "Organized",
                 "Organizando...": "Organizing...",
                 "En espera": "Waiting",
                 "Deshaciendo...": "Undoing...",
                 "Deshecho": "Undone",
-                "Desorganizada": "Unorganized",
+                "Sin organizar": "Unorganized",
             }
+            return mapping.get(result, result)
         else:
-            m = re.match(r'^(\d+)\s+files to organize$', current_status)
-            if m:
-                return f"{m.group(1)} archivos para organizar"
+            result = current_status
+            result = result.replace("folders", "carpetas").replace("files", "archivos")
+            result = result.replace("folder", "carpeta").replace("file", "archivo")
+            result = result.replace("0 items", "0 elementos")
             mapping = {
-                "Organized ✓": "Organizado ✓",
+                "Organized": "Organizado",
                 "Organizing...": "Organizando...",
                 "Waiting": "En espera",
                 "Undoing...": "Deshaciendo...",
                 "Undone": "Deshecho",
-                "Unorganized": "Desorganizada",
+                "Unorganized": "Sin organizar",
             }
-        return mapping.get(current_status, current_status)
+            return mapping.get(result, result)
 
     def _rebuild_options_lang(self):
         """Reconstruye los textos del área de opciones según el idioma actual."""
         eng = getattr(self, 'english_mode', False)
         # Actualizar label de modo
-        self._mode_label.config(text="Organization mode:" if eng else "Modo de organización:")
+        self._mode_label.configure(text="Organization mode:" if eng else "Modo de organización:")
         # Actualizar checkbox "No anteponer número"
-        self._cb_no_num.config(text="Do not prepend month number in subfolders" if eng else "No anteponer número de mes en subcarpetas")
+        self._cb_no_num.configure(text="Do not add month number" if eng else "No poner número de mes")
         # Cambiar valores del combo de modos
         modes_dict = self.MODES_EN if eng else self.MODES
         current_key = self._get_mode_key()
         new_values = list(modes_dict.values())
-        self.mode_combo["values"] = new_values
-        # Mantener la misma clave seleccionada
-        self.mode_var.set(modes_dict[current_key])
+        new_text = modes_dict[current_key]
+        self.mode_combo.configure(values=new_values)
+        self.mode_var.set(new_text)
+        self.mode_combo.set(new_text)
 
     def _build_options(self):
-        box = tk.Frame(self, bg=self.cget("bg"), padx=8, pady=4)
-        box.pack(fill="x")
-        options_frame = tk.Frame(box, bg=self.cget("bg"))
-        options_frame.pack(fill="x", pady=4)
+        box = ctk.CTkFrame(self, fg_color="#e8eef5", corner_radius=12)
+        box.pack(fill="x", padx=10, pady=3)
+        options_frame = tk.Frame(box, bg="#f0f4f8")
+        options_frame.pack(fill="x", pady=8, padx=10)
         self.mode_enabled_var = tk.BooleanVar(value=True)
         modes_init = self.MODES_EN if getattr(self, 'english_mode', False) else self.MODES
         self.mode_var = tk.StringVar(value=modes_init["medio_y_nombre"])
         eng = getattr(self, 'english_mode', False)
-        self._mode_label = ttk.Label(options_frame, text="Organization mode:" if eng else "Modo de organización:", font=("Segoe UI", 10))
+        self._mode_label = ctk.CTkLabel(options_frame, text="Organization mode:" if eng else "Modo de organización:", 
+                                        font=("Segoe UI", 13, "bold"), text_color="#1e3a5f")
         self._mode_label.pack(side="left", padx=(0, 8))
-        self.mode_combo = ttk.Combobox(
-            options_frame, textvariable=self.mode_var,
-            values=list(modes_init.values()), state="readonly", width=47)
+        self.mode_combo = ctk.CTkComboBox(
+            options_frame, variable=self.mode_var,
+            values=list(modes_init.values()), state="readonly", width=400,
+            fg_color="white", border_color="#3b82f6", button_color="#3b82f6",
+            dropdown_fg_color="white", text_color="#1e3a5f")
         self.mode_combo.pack(side="left", padx=(0, 10))
 
         self.var_dupes = tk.BooleanVar(value=False)
         self.var_reubicar = tk.BooleanVar(value=False)
         self.var_no_month_num = tk.BooleanVar(value=False)
-        self._cb_no_num = tk.Checkbutton(options_frame, text="No anteponer número de mes en subcarpetas",
-                                             variable=self.var_no_month_num,
-                                             bg=self.cget("bg"), activebackground=self.cget("bg"),
-                                             selectcolor="white")
+        self._cb_no_num = ctk.CTkCheckBox(options_frame, text="No poner número de mes",
+                                         variable=self.var_no_month_num,
+                                         fg_color="#3b82f6", hover_color="#1d4ed8",
+                                         text_color="#1e3a5f")
         self._cb_no_num.pack(side="left", padx=(8, 0))
         # Tooltip para el checkbox
         self._no_num_tooltip = None
@@ -1175,8 +1732,8 @@ class Click2FoldersApp(tk.Tk):
             tip.wm_geometry(f"+{e.x_root+12}+{e.y_root+20}")
             eng_tip = getattr(self, 'english_mode', False)
             tip_txt = "If checked, subfolders will not have\nthe corresponding month number." if eng_tip else "Si está marcada, las subcarpetas\nno tendrán número correspondiente al mes."
-            tk.Label(tip, text=tip_txt, background="#ffffcc",
-                     relief="solid", borderwidth=1, font=("Segoe UI", 9), padx=6, pady=4, justify="left").pack()
+            tk.Label(tip, text=tip_txt, background="#fef3c7", fg="#92400e",
+                     relief="solid", borderwidth=1, font=("Segoe UI", 10), padx=8, pady=4, justify="left").pack()
             self._no_num_tooltip = tip
         def _hide_no_num_tip(e):
             if self._no_num_tooltip:
@@ -1193,61 +1750,139 @@ class Click2FoldersApp(tk.Tk):
                 return r
         return "medio_y_nombre"
     def _build_queue_area(self):
-        frame = ttk.Frame(self, padding=(8, 2, 8, 6))
-        frame.pack(fill="both", expand=False)
+        frame = ctk.CTkFrame(self, fg_color="#e8eef5", corner_radius=12)
+        frame.pack(fill="both", expand=False, padx=10, pady=3)
 
         # Botones Seleccionar/Deseleccionar ENCIMA del tree
-        sel_top_bar = ttk.Frame(frame)
-        sel_top_bar.pack(fill="x", pady=(0, 3), anchor="w")
+        sel_top_bar = tk.Frame(frame, bg="#f0f4f8")
+        sel_top_bar.pack(fill="x", pady=(8, 3), padx=10)
 
-        body = ttk.Frame(frame)
-        body.pack(fill="both", expand=True)
+        body = tk.Frame(frame, bg="#f0f4f8")
+        body.pack(fill="both", expand=True, padx=10)
 
-        # Estilo Treeview: gris oscuro permanente en encabezado + cuadrícula
+        # Estilo Treeview: neoformismo
         style = ttk.Style()
+        style.theme_use("clam")
         style.configure("Treeview.Heading",
-                        background="#909090",
+                        background="#3b82f6",
                         foreground="white",
-                        relief="raised",
-                        font=("Segoe UI", 9, "bold"))
+                        relief="flat",
+                        font=("Segoe UI", 10, "bold"))
         style.map("Treeview.Heading",
-                  background=[("active", "#707070"), ("!active", "#909090")],
+                  background=[("active", "#2563eb"), ("!active", "#3b82f6")],
                   foreground=[("active", "white"), ("!active", "white")])
         style.configure("Treeview",
-                        background="#FFFFFF",
-                        fieldbackground="#FFFFFF",
-                        rowheight=22,
+                        background="#ffffff",
+                        fieldbackground="#ffffff",
+                        rowheight=30,
                         borderwidth=1,
-                        relief="solid")
+                        relief="solid",
+                        font=("Segoe UI", 11))
         style.layout("Treeview", [
             ("Treeview.treearea", {"sticky": "nswe"})
         ])
 
-        self.tree = ttk.Treeview(body, height=6, columns=("sel", "folder", "status"), show="headings")
-        self.tree.column("sel", width=28, minwidth=28, stretch=False, anchor="center")
-        self.tree.column("folder", width=480, minwidth=200, stretch=True, anchor="w")
-        self.tree.column("status", width=180, minwidth=140, stretch=False, anchor="center")
+        self.tree = ttk.Treeview(body, height=6, columns=("sel", "folder", "cantidad", "status"), show="headings")
+        self.tree.column("sel", width=30, minwidth=30, stretch=False, anchor="center")
+        self.tree.column("folder", width=320, minwidth=200, stretch=False, anchor="w")
+        self.tree.column("cantidad", width=350, minwidth=300, stretch=False, anchor="center")
+        self.tree.column("status", width=130, minwidth=110, stretch=False, anchor="center")
         self.tree.heading("sel", text="Sel.")
         self.tree.heading("folder", text="Folder" if self.english_mode else "Carpeta")
+        self.tree.heading("cantidad", text="Contenido" if not getattr(self, 'english_mode', False) else "Content")
         self.tree.heading("status", text="Status" if self.english_mode else "Estado")
+        self._add_placeholder_rows()
         scroll = tk.Scrollbar(body, command=self.tree.yview, width=22)
         self.tree.configure(yscrollcommand=scroll.set)
-        scroll.pack(side="right", fill="y")
-        self.tree.pack(side="left", fill="both", expand=True)
+        hscroll = tk.Scrollbar(body, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(xscrollcommand=hscroll.set)
+        self._hscroll = hscroll
+        self._hscroll_shown = False
+        body.grid_rowconfigure(0, weight=1)
+        body.grid_columnconfigure(0, weight=1)
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        scroll.grid(row=0, column=1, sticky="ns")
 
-        # Líneas divisorias alternando color de fila
-        self.tree.tag_configure("oddrow", background="#F5F5F5")
-        self.tree.tag_configure("evenrow", background="#FFFFFF")
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(pady=(6, 0), anchor="w")
-        self.btn_add_folder = ttk.Button(btn_frame, text="Add folder" if self.english_mode else "Agregar carpeta", command=self.on_add_folder)
-        self.btn_add_folder.pack(side="left", padx=5)
-        self.btn_add_multiple = ttk.Button(btn_frame, text="Add multiple folders" if self.english_mode else "Agregar varias carpetas", command=self.on_add_multiple_folders)
-        self.btn_add_multiple.pack(side="left", padx=5)
-        self.btn_start = ttk.Button(btn_frame, text="Organize" if self.english_mode else "Organizar", command=self.on_start)
-        self.btn_start.pack(side="left", padx=5)
-        self.btn_undo = ttk.Button(btn_frame, text="Undo organization" if self.english_mode else "Deshacer organización", command=self.on_undo)
-        self.btn_undo.pack(side="left", padx=5)
+        # Redimensionamiento de columnas arrastrando separadores
+        self._col_resizer = _ColumnResizer(self.tree, ("sel", "folder", "cantidad", "status"))
+
+        # Ajustar columna Carpeta para llenar espacio restante (sin stretch)
+        def _fit_folder(event=None):
+            if self._col_resizer._drag_col is not None:
+                return
+            try:
+                tw = self.tree.winfo_width()
+                if tw <= 10:
+                    self.after(50, _fit_folder)
+                    return
+                try:
+                    fnt = tkfont.Font(family="Segoe UI", size=11)
+                except Exception:
+                    fnt = None
+                eng_f = getattr(self, 'english_mode', False)
+                heads = ("Sel.", "Folder" if eng_f else "Carpeta",
+                         "Content" if eng_f else "Contenido",
+                         "Status" if eng_f else "Estado")
+
+                def _col_needed(idx, default):
+                    w = default
+                    if fnt is None:
+                        return w
+                    w = max(w, fnt.measure(heads[idx]) + 24)
+                    for iid in self.tree.get_children():
+                        vals = self.tree.item(iid, "values")
+                        if len(vals) > idx:
+                            t = str(vals[idx])
+                            if t:
+                                w = max(w, fnt.measure(t) + 24)
+                    return w
+
+                # Sin tope de ancho: el texto de Contenido/Estado nunca queda cortado
+                sel_w = 30
+                cant_w = _col_needed(2, 300)
+                status_w = _col_needed(3, 110)
+                folder_w = max(200, tw - sel_w - cant_w - status_w)
+                total_w = sel_w + folder_w + cant_w + status_w
+                self.tree.column("sel", width=sel_w, minwidth=sel_w)
+                self.tree.column("folder", width=folder_w, minwidth=200)
+                self.tree.column("cantidad", width=cant_w, minwidth=300)
+                self.tree.column("status", width=status_w, minwidth=110)
+                # Barra horizontal solo si algo queda fuera de la vista
+                need_h = total_w > tw + 2
+                if need_h != self._hscroll_shown:
+                    if need_h:
+                        self._hscroll.grid(row=1, column=0, sticky="ew")
+                    else:
+                        self._hscroll.grid_remove()
+                    self._hscroll_shown = need_h
+            except Exception:
+                pass
+        self._fit_folder = _fit_folder
+        self.tree.bind("<Configure>", _fit_folder, add="+")
+        self.after(50, _fit_folder)
+
+        # Líneas divisorias: filas alternas
+        self.tree.tag_configure("oddrow", background="#f0f4f8")
+        self.tree.tag_configure("evenrow", background="#ffffff")
+
+        btn_frame = tk.Frame(frame, bg="#f0f4f8")
+        btn_frame.pack(pady=(8, 10), padx=10, anchor="w")
+        
+        btn_style = {"corner_radius": 8, "height": 36, "font": ("Segoe UI", 12, "bold"),
+                     "hover_color": "#2563eb", "text_color": "white"}
+        
+        self.btn_add_folder = ctk.CTkButton(btn_frame, text="Add folder" if self.english_mode else "Agregar carpeta", 
+                                            fg_color="#3b82f6", command=self.on_add_folder, **btn_style)
+        self.btn_add_folder.pack(side="left", padx=4)
+        self.btn_add_multiple = ctk.CTkButton(btn_frame, text="Add multiple folders" if self.english_mode else "Agregar varias carpetas", 
+                                              fg_color="#6366f1", command=self.on_add_multiple_folders, **btn_style)
+        self.btn_add_multiple.pack(side="left", padx=4)
+        self.btn_start = ctk.CTkButton(btn_frame, text="Organize" if self.english_mode else "Organizar", 
+                                       fg_color="#10b981", command=self.on_start, **btn_style)
+        self.btn_start.pack(side="left", padx=4)
+        self.btn_undo = ctk.CTkButton(btn_frame, text="Undo organization" if self.english_mode else "Deshacer organización", 
+                                      fg_color="#f59e0b", command=self.on_undo, **btn_style)
+        self.btn_undo.pack(side="left", padx=4)
 
         # Diccionario de checkboxes: item_id -> bool
         self._tree_checked = {}
@@ -1258,19 +1893,22 @@ class Click2FoldersApp(tk.Tk):
             self.tree.set(item_id, "sel", "☑" if not val else "☐")
 
         def on_tree_click(event):
+            if self._col_resizer._drag_col is not None:
+                return
             col = self.tree.identify_column(event.x)
             row = self.tree.identify_row(event.y)
             if row and col == "#1":
                 self.after(1, lambda r=row: toggle_check(r))
 
-        self.tree.bind("<Button-1>", on_tree_click)
+        self.tree.bind("<Button-1>", on_tree_click, add="+")
         # Deshabilitar selección visual azul
         self.tree.configure(selectmode="none")
 
         def remove_checked():
             checked = [iid for iid, v in self._tree_checked.items() if v]
             if not checked:
-                self._show_modern_popup("Marca con ☑ las carpetas que deseas quitar de la lista.")
+                self._show_modern_popup(("Marca con ☑ las carpetas que deseas quitar de la lista.",
+                                         "Check ☑ the folders you want to remove from the list."))
                 return
             for iid in checked:
                 try:
@@ -1290,123 +1928,229 @@ class Click2FoldersApp(tk.Tk):
             # Limpiar log si no quedan carpetas
             if not self.queue:
                 self.after(0, self._clear_log)
+                self.after(0, self._add_placeholder_rows)
 
         def select_all_tree():
-            for iid in self._tree_checked:
-                self._tree_checked[iid] = True
-                self.tree.set(iid, "sel", "☑")
+            valid_items = []
+            for iid in list(self._tree_checked.keys()):
+                if self.tree.exists(iid):
+                    self._tree_checked[iid] = True
+                    self.tree.set(iid, "sel", "☑")
+                    valid_items.append(iid)
+            # Limpiar IDs inválidos del diccionario
+            stale = [k for k in self._tree_checked if k not in valid_items]
+            for k in stale:
+                del self._tree_checked[k]
 
         def deselect_all_tree():
-            for iid in self._tree_checked:
-                self._tree_checked[iid] = False
-                self.tree.set(iid, "sel", "☐")
+            valid_items = []
+            for iid in list(self._tree_checked.keys()):
+                if self.tree.exists(iid):
+                    self._tree_checked[iid] = False
+                    self.tree.set(iid, "sel", "☐")
+                    valid_items.append(iid)
+            # Limpiar IDs inválidos del diccionario
+            stale = [k for k in self._tree_checked if k not in valid_items]
+            for k in stale:
+                del self._tree_checked[k]
 
-        self.btn_remove = ttk.Button(btn_frame, text="Remove selected folders" if self.english_mode else "Quitar Carpetas Seleccionadas", command=remove_checked)
-        self.btn_remove.pack(side="left", padx=5)
-        self.status_label = ttk.Label(btn_frame, text="", font=("Segoe UI", 10, "bold"))
-        self.status_label.pack(side="left", padx=10)
+        self.btn_remove = ctk.CTkButton(btn_frame, text="Remove selected folders" if self.english_mode else "Quitar Carpetas Seleccionadas", 
+                                         fg_color="#ef4444", command=remove_checked, **btn_style)
+        self.btn_remove.pack(side="left", padx=4)
+        # status_label oculto (referencias internas lo usan pero no se muestra)
+        self.status_label = ctk.CTkLabel(self, text="", font=("Segoe UI", 12, "bold"), text_color="#1e3a5f")
 
         # Botones seleccionar/deseleccionar en barra superior (Seleccionar primero)
-        self.btn_sel_all = ttk.Button(sel_top_bar, text="Select all" if self.english_mode else "Seleccionar todo", command=select_all_tree)
+        self.btn_sel_all = ctk.CTkButton(sel_top_bar, text="Select all" if self.english_mode else "Seleccionar todo", 
+                                         fg_color="#64748b", hover_color="#475569", command=select_all_tree,
+                                         corner_radius=8, height=28, font=("Segoe UI", 11), text_color="white", width=120)
         self.btn_sel_all.pack(side="left", padx=(0, 4))
-        self.btn_desel_all = ttk.Button(sel_top_bar, text="Deselect all" if self.english_mode else "Deseleccionar todo", command=deselect_all_tree)
+        self.btn_desel_all = ctk.CTkButton(sel_top_bar, text="Deselect all" if self.english_mode else "Deseleccionar todo", 
+                                           fg_color="#64748b", hover_color="#475569", command=deselect_all_tree,
+                                           corner_radius=8, height=28, font=("Segoe UI", 11), text_color="white", width=120)
         self.btn_desel_all.pack(side="left")
         # Deshabilitar clic derecho en el árbol para evitar confusiones al usuario
         self.tree.bind("<Button-3>", lambda e: "break")
         self.tree.bind("<Button-2>", lambda e: "break")
 
+        # Tooltip para ruta completa en columna Carpeta
+        self._tree_folder_tooltip = None
+        def _on_tree_folder_hover(event):
+            try:
+                col = self.tree.identify_column(event.x)
+                row = self.tree.identify_row(event.y)
+                if row and col == "#2":
+                    folder_val = self.tree.set(row, "folder")
+                    if folder_val:
+                        if self._tree_folder_tooltip and self._tree_folder_tooltip.winfo_exists():
+                            self._tree_folder_tooltip.destroy()
+                        tip = tk.Toplevel(self)
+                        tip.wm_overrideredirect(True)
+                        tip.wm_geometry(f"+{event.x_root + 12}+{event.y_root + 18}")
+                        ctk.CTkLabel(tip, text=folder_val, fg_color="#1e293b", text_color="#e2e8f0",
+                                    corner_radius=6, font=("Segoe UI", 11), padx=8, pady=4).pack()
+                        self._tree_folder_tooltip = tip
+                else:
+                    if self._tree_folder_tooltip and self._tree_folder_tooltip.winfo_exists():
+                        self._tree_folder_tooltip.destroy()
+                        self._tree_folder_tooltip = None
+            except Exception:
+                pass
+        def _on_tree_folder_leave(event):
+            try:
+                if self._tree_folder_tooltip and self._tree_folder_tooltip.winfo_exists():
+                    self._tree_folder_tooltip.destroy()
+                    self._tree_folder_tooltip = None
+            except Exception:
+                pass
+        self.tree.bind("<Motion>", _on_tree_folder_hover, add="+")
+        self.tree.bind("<Leave>", _on_tree_folder_leave, add="+")
+
+    def _add_placeholder_rows(self):
+        for i in range(6):
+            tag = "oddrow" if i % 2 == 0 else "evenrow"
+            self.tree.insert("", "end", values=("", "", "", ""), tags=(tag, "ph"))
+
+    def _clear_placeholder_rows(self):
+        # Borrar SOLO las filas placeholder (tag "ph"): las carpetas reales
+        # del usuario se conservan al agregar nuevas (acumular, no reemplazar)
+        for item in self.tree.get_children():
+            if "ph" in self.tree.item(item, "tags"):
+                self.tree.delete(item)
+        # Limpiar IDs inválidos del diccionario de checks
+        if hasattr(self, '_tree_checked'):
+            stale = [k for k in self._tree_checked if not self.tree.exists(k)]
+            for k in stale:
+                del self._tree_checked[k]
+
     def _build_progress_bar(self):
-        self.progress = ttk.Progressbar(self, mode="determinate", maximum=100)
-        self.progress.pack(fill="x", padx=8, pady=(6, 6))
+        self.progress = ctk.CTkProgressBar(self, orientation="horizontal", progress_color="#3b82f6",
+                                          fg_color="#e2e8f0", height=20, corner_radius=10)
+        self.progress.pack(fill="x", padx=10, pady=(5, 3))
+        self.progress.set(0)
 
     def _build_log_area(self):
-        frame = ttk.Frame(self, padding=(8, 0, 8, 0))
-        frame.pack(fill="both", expand=True)
-        self.lbl_cf_frame = ttk.Frame(frame)
-        self.lbl_cf_frame.pack(fill="x", pady=(0, 2))
-        self.lbl_cf_prefix = tk.Label(self.lbl_cf_frame, text="Organizing folder: " if self.english_mode else "Organizando Carpeta: ", font=("Segoe UI", 9), fg="#1a6eb5", anchor="w")
+        frame = ctk.CTkFrame(self, fg_color="#e8eef5", corner_radius=12)
+        frame.pack(fill="both", expand=True, padx=10, pady=3)
+        self.lbl_cf_frame = tk.Frame(frame, bg="#f0f4f8")
+        self.lbl_cf_frame.pack(fill="x", pady=(8, 4), padx=10)
+        self.lbl_cf_prefix = ctk.CTkLabel(self.lbl_cf_frame, text="Organizing folder: " if self.english_mode else "Organizando Carpeta: ", 
+                                         font=("Segoe UI", 12), text_color="#3b82f6", anchor="w")
         self.lbl_cf_prefix.pack(side="left")
-        self.lbl_cf_name = tk.Label(self.lbl_cf_frame, text="None" if self.english_mode else "Ninguna", font=("Segoe UI", 9, "bold"), fg="black", anchor="w")
+        self.lbl_cf_name = ctk.CTkLabel(self.lbl_cf_frame, text="None" if self.english_mode else "Ninguna", 
+                                         font=("Segoe UI", 12, "bold"), text_color="#1e3a5f", anchor="w")
         self.lbl_cf_name.pack(side="left")
-        txt_frame = ttk.Frame(frame)
-        txt_frame.pack(fill="both", expand=True)
-        self.txt = tk.Text(txt_frame, height=10, state="disabled")
-        scroll = tk.Scrollbar(txt_frame, command=self.txt.yview, width=22)
+        self.lbl_wait = ctk.CTkLabel(self.lbl_cf_frame, text="", 
+                                     font=("Segoe UI", 12, "bold"), text_color="#f59e0b")
+        self.lbl_wait.place(relx=0.5, rely=0.5, anchor="center")
+        txt_frame = ctk.CTkFrame(frame, fg_color="white", corner_radius=8)
+        txt_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.txt = tk.Text(txt_frame, height=10, state="disabled", bg="#ffffff", fg="#1e3a5f",
+                          font=("Consolas", 10), relief="flat", borderwidth=0, highlightthickness=0)
+        scroll = ctk.CTkScrollbar(txt_frame, command=self.txt.yview, fg_color="#cbd5e1", button_color="#94a3b8")
         self.txt.configure(yscrollcommand=scroll.set)
-        scroll.pack(side="right", fill="y")
-        self.txt.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y", padx=(2, 5), pady=5)
+        self.txt.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+        self.txt.bind("<Configure>", self._on_log_configure)
+
+    def _on_log_configure(self, event=None):
+        try:
+            if event is not None and event.widget is not self.txt:
+                return
+            if getattr(self, "_log_realign_id", None):
+                try:
+                    self.after_cancel(self._log_realign_id)
+                except Exception:
+                    pass
+            self._log_realign_id = self.after(120, self._realign_log_view)
+        except Exception:
+            pass
+
+    def _realign_log_view(self):
+        self._log_realign_id = None
+        try:
+            if self.txt.yview()[1] >= 0.999:
+                self.txt.yview_moveto(1.0)
+        except Exception:
+            pass
 
     def _build_counters_bar(self):
-        bar = ttk.Frame(self, padding=(8, 2, 8, 6))
-        bar.pack(fill="x")
-        self.lbl_analyzed = ttk.Label(bar, text="Files analyzed: 0" if self.english_mode else "Archivos analizados: 0")
-        self.lbl_dirs = ttk.Label(bar, text="Folders created: 0" if self.english_mode else "Carpetas creadas: 0")
-        self.lbl_dupes = ttk.Label(bar, text="")  # mantenido por compatibilidad, oculto
-        self.lbl_time = ttk.Label(bar, text="Elapsed time: 0m 0s" if self.english_mode else "Tiempo transcurrido: 0m 0s")
-        self.lbl_analyzed.pack(side="left")
-        ttk.Label(bar, text=" ").pack(side="left")
-        self.lbl_dirs.pack(side="left")
-        ttk.Label(bar, text=" ").pack(side="left")
-        self.lbl_time.pack(side="left")
+        bar = tk.Frame(self, bg="#1e3a5f")
+        bar.pack(fill="x", padx=0, pady=0, side="bottom")
+        self.lbl_analyzed = tk.Label(bar, text="Total files organized: 0" if self.english_mode else "Total de archivos organizados: 0",
+                                    font=("Segoe UI", 11), bg="#1e3a5f", fg="white")
+        self.lbl_dirs = tk.Label(bar, text="Total folders created: 0" if self.english_mode else "Total de carpetas creadas: 0",
+                                font=("Segoe UI", 11), bg="#1e3a5f", fg="white")
+        self.lbl_dupes = tk.Label(bar, text="", font=("Segoe UI", 11), bg="#1e3a5f", fg="white")
+        self.lbl_time = tk.Label(bar, text="Elapsed time: 0m 0s" if self.english_mode else "Tiempo transcurrido: 0m 0s",
+                                font=("Segoe UI", 11), bg="#1e3a5f", fg="white")
+        self.lbl_analyzed.pack(side="left", padx=12)
+        self.lbl_dirs.pack(side="left", padx=12)
+        self.lbl_time.pack(side="left", padx=12)
 
     def _clear_log(self):
         try:
             self.txt.configure(state="normal")
             self.txt.delete("1.0", tk.END)
             self.txt.configure(state="disabled")
-            self.lbl_cf_name.config(text="None" if getattr(self, 'english_mode', False) else "Ninguna")
+            self.lbl_cf_name.configure(text="None" if getattr(self, 'english_mode', False) else "Ninguna")
         except Exception:
             pass
 
     def _close_aux_windows(self):
+        donate_was_open = False
         for attr in ['donate_win', 'support_win', 'tutorial_win', 'limits_win']:
             win_holder = getattr(self, attr, None)
             if win_holder and hasattr(win_holder, 'win') and win_holder.win:
+                if attr == 'donate_win':
+                    donate_was_open = True
                 try:
                     win_holder.win.destroy()
                 except Exception:
                     pass
                 win_holder.win = None
+        if donate_was_open:
+            self.after(100, self._on_donate_closed)
     def _update_undo_button_state(self):
-        has_operations_to_undo = len(self.moved_ops) > 0
-        has_folders = len(self.queue) > 0
-        should_enable = (has_operations_to_undo or has_folders) and not self.is_processing
         if self.btn_undo:
-            if should_enable:
-                self.btn_undo.config(state="normal")
+            if self.is_processing:
+                self.btn_undo.configure(state="disabled")
             else:
-                self.btn_undo.config(state="disabled")
+                self.btn_undo.configure(state="normal")
 
     def _set_buttons_state(self, state):
         state_str = "normal" if state else "disabled"
         if self.btn_add_folder:
-            self.btn_add_folder.config(state=state_str)
+            self.btn_add_folder.configure(state=state_str)
         if self.btn_start:
-            self.btn_start.config(state=state_str)
+            self.btn_start.configure(state=state_str)
         if self.btn_undo:
             self._update_undo_button_state()
         if self.btn_remove:
-            self.btn_remove.config(state=state_str)
+            self.btn_remove.configure(state=state_str)
+        if getattr(self, "btn_lang", None):
+            self.btn_lang.configure(state=state_str)
 
     def on_tutorial(self):
         self._close_aux_windows()
         w = tk.Toplevel(self)
+        w.withdraw()
         w.title("Tutorial — Click2Folders" if getattr(self, 'english_mode', False) else "Tutorial")
         w.resizable(True, True)
+        w.configure(bg="#f0f4f8")
         safe_icon(w)
-        w.withdraw()
 
         # Usar canvas con scrollbar para que quepa en pantalla
-        main_frame = ttk.Frame(w)
+        main_frame = tk.Frame(w, bg="#f0f4f8")
         main_frame.pack(fill="both", expand=True)
 
-        canvas = tk.Canvas(main_frame, highlightthickness=0)
-        vsb = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        canvas = tk.Canvas(main_frame, highlightthickness=0, bg="#f0f4f8")
+        vsb = ctk.CTkScrollbar(main_frame, orientation="vertical", command=canvas.yview, fg_color="#cbd5e1", button_color="#94a3b8")
         canvas.configure(yscrollcommand=vsb.set)
-        vsb.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y", padx=(0, 5), pady=5)
+        canvas.pack(side="left", fill="both", expand=True, padx=5, pady=5)
 
-        pad = ttk.Frame(canvas, padding=(12, 2, 12, 12))
+        pad = tk.Frame(canvas, bg="#f0f4f8")
         pad_id = canvas.create_window((0, 0), window=pad, anchor="nw")
         pad.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.bind("<Configure>", lambda e: canvas.itemconfig(pad_id, width=e.width))
@@ -1420,7 +2164,7 @@ class Click2FoldersApp(tk.Tk):
                 content_h = bbox2[3] - bbox2[1]
                 visible_h = canvas.winfo_height()
                 if content_h <= visible_h:
-                    return  # nada que scrollear, ignorar la rueda
+                    return
             canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
 
         canvas.bind_all("<MouseWheel>", _on_mousewheel)
@@ -1428,30 +2172,29 @@ class Click2FoldersApp(tk.Tk):
         wrap_width = 760
 
         # ── Encabezado siempre visible ──────────────────────────────
-        tk.Label(pad, text="📁  Click2Folders — Automatic Photo & Video Organizer" if getattr(self, 'english_mode', False) else "📁  Click2Folders — Organizador Automático de Fotos y Videos",
-                 font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0,4))
+        ctk.CTkLabel(pad, text="📁  Click2Folders — Chronological Photo & Video Organizer" if getattr(self, 'english_mode', False) else "📁  Click2Folders — Organizador Cronológico de Fotos y Videos",
+                     font=("Segoe UI", 14, "bold"), text_color="#1e3a5f").pack(anchor="w", pady=(0,8), padx=10)
 
         # ── Secciones desplegables ───────────────────────────────────
         eng = getattr(self, 'english_mode', False)
         if eng:
             sections_data = [
                 ("🤔  What does the program do?", [
-                    ("If you have many unorganized photos on your PC and you would like to sort them chronologically", False),
-                    ("**now you can organize them with one click!**", False),
-                    ("To achieve this, the program first detects the year and month dates of your files to", False),
-                    ("create year folders and month subfolders, then moves them to the folder where they were taken.", False),
-                    ("     **Structure example:**", False),
-                    ("     **Year folder:** 2025", False),
-                    ("     **Month subfolders:** 1 January / 2 February / 3 March / etc.", False),
+                    ("The program detects the dates of your photos and videos to create year folders,", False),
+                    ("month subfolders and then moves them to their corresponding folder.", False),
+                    ("", False),
+                    ("__The program offers 4 organization modes:__", False),
+                    ("1. By Capture Date, Media Created or Name.", True),
+                    ("2. By Date in the Filename.", True),
+                    ("3. By File Creation Date.", True),
+                    ("4. By Modification Date.", True),
                 ]),
                 ("📋  How to use the program?", [
                     ("1. Add the folder or folders you want.", False),
                     ("2. Choose one of the 4 organization modes.", False),
                     ("3. Check the selection column for the folders you want and click organize.", False),
-                    ("If you don't want the month number prefix, before organizing check the box:", False),
-                    ("   **\"Do not prepend month number in subfolders\"**.", False),
                 ]),
-                ("📅  What dates does it detect?", [
+                ("📅  What dates does the program detect?", [
                     ("  Capture date:", True),
                     ("  Created by the camera at the exact moment the photo was taken.", False),
                     ("  Date in the filename:", True),
@@ -1487,29 +2230,37 @@ class Click2FoldersApp(tk.Tk):
                     ("   Starts organizing the loaded folders according to the chosen mode.", False),
                     ("• Select all / Deselect all:", True),
                     ("   Check or uncheck all folders in the list.", False),
-                    ("• Remove Folders:", True),
+                    ("• Remove selected folders:", True),
                     ("   Removes the checked folders from the list.", False),
                     ("• Undo organization:", True),
                     ("   Moves all files from subfolders back to the root folder and removes empty month folders.", False),
-                    ("• Do not prepend month number in subfolders:", True),
+                    ("• Do not add month number:", True),
                     ("   If checked, subfolders won't have the corresponding month number.", False),
-                    ("• English Style / Spanish Style:", True),
+                    ("• Translate to English / Traducir al Español:", True),
                     ("   Changes the interface language, tutorial and sets month", False),
                     ("   subfolder names to English when organizing: (1 January, 2 February, etc...).", False),
+                    ("• Update / Actualización:", True),
+                    ("   Opens the GitHub page to download the latest version of the program.", False),
+                    ("   The program also automatically checks for updates when it starts.", False),
                 ]),
                 ("ℹ  Additional information", [
                     ("• Root folder:", True),
                     ("   The original folder you load or select in the program.", False),
                     ("• Supported extensions:", True),
-                    ("   The program processes any image or video file (jpeg, gif, png, mp4, etc.)", False),
-                    ("   as long as it contains metadata or dates in its name.", False),
+                    ("   The program processes any file type (jpeg, png, mp4, Word, Excel, PDF, etc.):", False),
+                    ("   photos/videos use metadata or dates in the name; documents organize best", False),
+                    ("   with mode 3 (Creation Date) or 4 (Modification Date), or dates in the name.", False),
                     ("• Interface:", True),
                     ("   Has a window for loading folders, another that shows real-time progress,", False),
-                    ("   and at the bottom shows data like: analyzed files, created folders, and elapsed time.", False),
+                    ("   and at the bottom shows data like: total files organized, total folders created, and elapsed time.", False),
                     ("• Organizing Folder:", True),
                     ("   Shows in real-time which folder is being processed.", False),
                     ("• Status column:", True),
-                    ("   Shows the number of files in the folder or subfolder count.", False),
+                    ("   Indicates whether the folder has been organized or not. Shows: 'Organized', 'Unorganized', or intermediate states like 'Organizing...' or 'Undoing...'.", False),
+                    ("• Content column:", True),
+                    ("   When adding a folder, shows total folders and files: 'X folders / Total files'.", False),
+                    ("   If the folder is empty, shows: 'Empty Folder'.", False),
+                    ("   After organizing, shows files organized and without date: 'Y files organized / Z without date'.", False),
                     ("• Selection column \"Sel\":", True),
                     ("   Check the folders you want to organize or undo.", False),
                     ("• GIF files:", True),
@@ -1518,10 +2269,10 @@ class Click2FoldersApp(tk.Tk):
                     ("   The program only recognizes valid dates from year **1900** onwards.", False),
                 ]),
                 ("⚠  Important", [
-                    ("• The program **NEVER** deletes your photos or videos, it only organizes them.", False),
+                    ("• The program **NEVER** deletes your files, it only organizes them.", False),
                     ("• You can always undo the organization done by the program and reorganize in any of the 4 modes.", False),
                     ("• The program does not create empty folders. If a month subfolder is missing, no files had that date.", False),
-                    ("• If you don't check **\"Do not prepend month number in subfolders\"** the subfolders will include the month number.", False),
+                    ("• If you don't check **\"Do not add month number\"** the subfolders will include the month number.", False),
                     ("   Example: **\"1 January / 6 June / 12 December\"**.", False),
                     ("• The program does not rename your files or year folders.", False),
                     ("**• Keep in mind that if you add folders you organized yourself, your personal organization**", False),
@@ -1531,22 +2282,21 @@ class Click2FoldersApp(tk.Tk):
         else:
             sections_data = [
                 ("🤔  ¿Qué hace el programa?", [
-                    ("Si tienes en tu pc muchas fotos en desorden y te gustaría ordenarlas cronológicamente", False),
-                    ("**¡ahora las puedes organizar en un click!**", False),
-                    ("Para lograrlo el programa primero detecta las fechas de año y mes de tus archivos para", False),
-                    ("crear las carpetas de año y subcarpetas por mes, luego los mueve a la carpeta en que fueron tomadas.", False),
-                    ("     **Ejemplo de estructura:**", False),
-                    ("     **Carpeta año:** 2025", False),
-                    ("     **Subcarpetas por mes:** 1 Enero / 2 Febrero / 3 Marzo / etc.", False),
+                    ("El programa detecta las fechas de tus fotos y videos para crear carpetas por año,", False),
+                    ("subcarpetas por mes y luego los mueve a su carpeta correspondiente.", False),
+                    ("", False),
+                    ("__El programa ofrece 4 modos de organización:__", False),
+                    ("1. Por Fecha de Captura, Medio Creado o Nombre.", True),
+                    ("2. Por Fecha en el Nombre.", True),
+                    ("3. Por Fecha de Creación.", True),
+                    ("4. Por Fecha de Modificación.", True),
                 ]),
                 ("📋  ¿Cómo usar el programa?", [
                     ("1. Agrega la carpeta o carpetas que quieras.", False),
                     ("2. Elige alguno de los 4 modos de organización.", False),
                     ("3. Marca en la columna de selección las carpetas que quieras y da click en organizar.", False),
-                    ("Si no quieres anteponer el número de mes, antes de organizar marca la casilla:", False),
-                    ("   **\"No anteponer número de mes en subcarpetas\"**.", False),
                 ]),
-                ("📅  ¿Qué fechas detecta?", [
+                ("📅  ¿Qué fechas detecta el programa?", [
                     ("  Fecha de captura:", True),
                     ("  Creada por la cámara en el momento exacto en que se tomó la fotografía.", False),
                     ("  Fecha en el nombre del archivo:", True),
@@ -1588,25 +2338,33 @@ class Click2FoldersApp(tk.Tk):
                     ("• Deshacer organización:", True),
                     ("   Mueve todos los archivos de las subcarpetas de vuelta a la carpeta raíz y elimina las carpetas de mes vacías.", False),
                     ("   Úsalo cuando quieras reorganizar tus fotos con un modo diferente.", False),
-                    ("• No anteponer número de mes en subcarpetas:", True),
+                    ("• No poner número de mes:", True),
                     ("   Si está marcada, las subcarpetas no tendrán número correspondiente al mes.", False),
-                    ("• Modo Ingles / Spanish Style:", True),
+                    ("• Traducir al Español / Translate to English:", True),
                     ("   Cambia el idioma de la interfaz, el tutorial y al organizar las carpetas pone los nombres de", False),
                     ("   las subcarpetas por mes en ingles: (1 January, 2 February, etc...).", False),
+                    ("• Actualización / Update:", True),
+                    ("   Abre la página de GitHub para descargar la última versión del programa.", False),
+                    ("   El programa también verifica actualizaciones automáticamente al iniciar.", False),
                 ]),
                 ("ℹ  Información adicional", [
                     ("• Carpeta raíz:", True),
                     ("   Es la misma carpeta original que cargas o seleccionas en el programa.", False),
                     ("• Extensiones soportadas:", True),
-                    ("   El programa procesa cualquier archivo de imagen o video (jpeg, gif, png, mp4, etc.)", False),
-                    ("   siempre que contenga metadatos o fechas en su nombre.", False),
+                    ("   El programa procesa cualquier tipo de archivo (jpeg, png, mp4, Word, Excel, PDF, etc.):", False),
+                    ("   fotos/videos usan metadatos o fechas en el nombre; los documentos organizan mejor", False),
+                    ("   con el modo 3 (Fecha de Creación) o 4 (Fecha de Modificación), o con fechas en el nombre.", False),
                     ("• Interfaz:", True),
                     ("   Cuenta con una ventana para carga de carpetas, otra que muestra en tiempo real lo que hace el programa,", False),
-                    ("   en la parte inferior muestra datos como: archivos analizados, carpetas creadas, y el tiempo que duró la organización.", False),
+                    ("   en la parte inferior muestra datos como: total de archivos organizados, total de carpetas creadas, y el tiempo que duró la organización.", False),
                     ("• Organizando Carpeta:", True),
                     ("   Muestra en tiempo real qué carpeta se está procesando durante la organización o desorganización.", False),
                     ("• Columna Estado:", True),
-                    ("   Muestra el número de archivos que contiene la carpeta o cantidad de subcarpetas.", False),
+                    ("   Indica si la carpeta ha sido organizada o no. Muestra: 'Organizado', 'Sin organizar', o estados intermedios como 'Organizando...' o 'Deshaciendo...'.", False),
+                    ("• Columna Contenido:", True),
+                    ("   Al agregar una carpeta, muestra el total de carpetas y archivos: 'X carpetas / Y Archivos en total'.", False),
+                    ("   Si la carpeta está vacía, muestra: 'Carpeta Vacía'.", False),
+                    ("   Después de organizar, muestra archivos organizados y sin fecha: 'Y archivos organizados / Z sin fecha'.", False),
                     ("• Columna Selección \"Sel\":", True),
                     ("   Marca las carpetas que quieras organizar o desorganizar.", False),
                     ("• Archivos Gif:", True),
@@ -1615,10 +2373,10 @@ class Click2FoldersApp(tk.Tk):
                     ("   El programa solo reconoce fechas válidas desde el año **1.900** en adelante.", False),
                 ]),
                 ("⚠  Importante", [
-                    ("• El programa **NUNCA** borra tus fotos ni videos.", False),
+                    ("• El programa **NUNCA** borra tus archivos, solo los organiza.", False),
                     ("• Siempre puedes deshacer la organización hecha previamente con el programa y volver a organizarla en cualquiera de los 4 modos las veces que quieras.", False),
                     ("• El programa no crea carpetas vacías, Si falta una subcarpeta de mes es porque no se detectaron fotos con esa fecha en el modo elegido.", False),
-                    ("• Si no marcas **\"No anteponer número de mes en subcarpetas\"** las subcarpetas se nombrarán con el número correspondiente al mes,", False),
+                    ("• Si no marcas **\"No poner número de mes\"** las subcarpetas se nombrarán con el número correspondiente al mes,", False),
                     ("   Ejemplo: **\"1 Enero / 6 Junio / 12 Diciembre\"**.", False),
                     ("• El programa no renombra tus archivos ni las carpetas por año.", False),
                     ("• Puedes subir carpetas organizadas y directamente darle a organizar en el modo elegido, el programa deshará la organización previa moviendo todos los archivos a la raíz, eliminando todas las carpetas vacías para organizar todo desde cero.", False),
@@ -1637,31 +2395,36 @@ class Click2FoldersApp(tk.Tk):
             sep = ttk.Separator(pad, orient="horizontal")
             sep.pack(fill="x", pady=(8, 2))
             open_var = tk.BooleanVar(value=False)
-            hdr = tk.Frame(pad, cursor="hand2")
+            hdr = tk.Frame(pad, bg="#f0f4f8", cursor="hand2")
             hdr.pack(fill="x", anchor="w")
-            arrow_lbl = tk.Label(hdr, text="► ", font=("Segoe UI", 10, "bold"), foreground="#1a6eb5")
+            arrow_lbl = tk.Label(hdr, text="► ", font=("Segoe UI", 10, "bold"), fg="#3b82f6", bg="#f0f4f8", cursor="hand2")
             arrow_lbl.pack(side="left")
-            tk.Label(hdr, text=sec_title, font=("Segoe UI", 10, "bold"), foreground="#1a6eb5",
-                     justify="left").pack(side="left")
-            body = tk.Frame(pad)
+            title_lbl = tk.Label(hdr, text=sec_title, font=("Segoe UI", 10, "bold"), fg="#3b82f6",
+                     justify="left", bg="#f0f4f8", cursor="hand2")
+            title_lbl.pack(side="left")
+            body = tk.Frame(pad, bg="#f0f4f8")
             # NO hacemos body.pack() aquí — se hará en toggle justo después del hdr
             for text, is_bold in sec_lines:
-                if '**' in text:
-                    parts = re.split(r'(\*\*.*?\*\*)', text)
-                    row = tk.Frame(body)
+                if '**' in text or '__' in text:
+                    parts = re.split(r'(\*\*.*?\*\*|__.*?__)', text)
+                    row = tk.Frame(body, bg="#f0f4f8")
                     row.pack(anchor="w", padx=16, pady=1)
                     for part in parts:
                         if part.startswith('**') and part.endswith('**') and len(part) > 4:
                             inner = part[2:-2]
                             tk.Label(row, text=inner, font=("Segoe UI", 9, "bold"),
-                                     justify="left", anchor="w").pack(side="left")
+                                     justify="left", anchor="w", fg="#1e3a5f", bg="#f0f4f8").pack(side="left")
+                        elif part.startswith('__') and part.endswith('__') and len(part) > 4:
+                            inner = part[2:-2]
+                            tk.Label(row, text=inner, font=("Segoe UI", 9, "underline"),
+                                     justify="left", anchor="w", fg="#1e3a5f", bg="#f0f4f8").pack(side="left")
                         else:
                             tk.Label(row, text=part, font=("Segoe UI", 9),
-                                     justify="left", anchor="w").pack(side="left")
+                                     justify="left", anchor="w", fg="#1e3a5f", bg="#f0f4f8").pack(side="left")
                 else:
                     font = ("Segoe UI", 9, "bold") if is_bold else ("Segoe UI", 9)
                     tk.Label(body, text=text, font=font, justify="left",
-                             wraplength=wrap_width - 20, anchor="w").pack(anchor="w", padx=16, pady=1)
+                             wraplength=wrap_width - 20, anchor="w", fg="#1e3a5f", bg="#f0f4f8").pack(anchor="w", padx=16, pady=1)
             accordion_items.append((sep, hdr, body, open_var, arrow_lbl))
             section_widgets[sec_title] = (hdr, body, open_var, arrow_lbl)
 
@@ -1676,16 +2439,16 @@ class Click2FoldersApp(tk.Tk):
                 if bv.get():
                     bd.pack_forget()
                     bv.set(False)
-                    al.config(text="► ")
+                    al.configure(text="► ")
                 else:
                     for j, (_, _, other_body, other_var, other_arrow) in enumerate(accordion_items):
                         if j != current_i and other_var.get():
                             other_body.pack_forget()
                             other_var.set(False)
-                            other_arrow.config(text="► ")
+                            other_arrow.configure(text="► ")
                     bd.pack(fill="x", anchor="w", before=after_widget)
                     bv.set(True)
-                    al.config(text="▼ ")
+                    al.configure(text="▼ ")
                 pad.update_idletasks()
                 canvas.configure(scrollregion=canvas.bbox("all"))
             return toggle
@@ -1714,8 +2477,8 @@ class Click2FoldersApp(tk.Tk):
         main_h = self.winfo_height()
         # Ancho casi igual al de la ventana principal
         desired_width = max(820, min(main_w - 20, sw - 40))
-        # Posición: justo debajo de la barra de botones (~100px desde el top de la ventana principal)
-        toolbar_offset = 100  # botones + modo de organización
+        # Posición: justo debajo de la barra de botones y opciones (~130px desde el top de la ventana principal)
+        toolbar_offset = 130  # toolbar + modo de organización + checkbox
         x = main_x + 10
         y_start = main_y + toolbar_offset
         # Forzar el ancho del contenido ANTES de medir altura, para que
@@ -1743,39 +2506,52 @@ class Click2FoldersApp(tk.Tk):
         canvas.configure(scrollregion=canvas.bbox("all"))
         canvas.yview_moveto(0)
         self.tutorial_win.win = w
+    def _action_icon(self, parent, glyph, cmd):
+        return ctk.CTkButton(parent, text=glyph, width=34, height=28, corner_radius=8,
+                             fg_color="white", hover_color="#f1f5f9", border_width=1,
+                             border_color="#cbd5e1", text_color="#475569",
+                             font=("Segoe UI", 15), command=cmd)
+
     def on_support(self):
         self._close_aux_windows()
         w = tk.Toplevel(self)
+        w.withdraw()
         eng = getattr(self, 'english_mode', False)
         w.title("Support" if eng else "Soporte")
         w.resizable(False, False)
-        w.withdraw()
+        w.configure(bg="#f0f4f8")
         w.transient(self)
-        pad = ttk.Frame(w, padding=18)
-        pad.pack(fill="both", expand=True)
-        title = ttk.Label(pad, text="Do you have any questions or suggestions?" if eng else "¿Tienes alguna duda o sugerencia?", font=("Segoe UI", 12, "bold"))
-        title.pack(pady=(0, 6))
-        ttk.Label(pad, text="Contact us!\n" if eng else "¡Contáctanos!\n", font=("Segoe UI", 10)).pack()
-        ttk.Label(pad, text="Click the email to copy it" if eng else "Haz click en el correo para copiarlo", font=("Segoe UI", 9, "italic")).pack(pady=(0, 6))
+        pad = ctk.CTkFrame(w, fg_color="#e8eef5", corner_radius=12)
+        pad.pack(fill="both", expand=True, padx=15, pady=15)
+        ctk.CTkLabel(pad, text="¿Do you have any questions,\nsuggestions or want to report a problem?" if eng else "¿Tienes alguna duda, sugerencia\no reportar un problema del programa?",
+                     font=("Segoe UI", 15, "bold"), text_color="#1e3a5f", justify="center").pack(pady=(0, 10))
+        ctk.CTkLabel(pad, text="👇", font=("Segoe UI", 22), text_color="#f59e0b").pack(pady=(0, 4))
+        ctk.CTkLabel(pad, text="¡Write to us!" if eng else "¡Escríbenos!",
+                     font=("Segoe UI", 14, "bold"), text_color="#475569").pack(pady=(0, 4))
 
-        def copy_mail(e=None):
+        def copy_mail(e=None, widget=None):
             self.clipboard_clear()
             self.clipboard_append("click2folders@gmail.com")
+            msg = "Email copied to clipboard" if getattr(self, 'english_mode', False) else "Correo copiado al portapapeles"
             if e:
                 x = e.x_root
                 y = e.y_root - 30
-                self._show_tooltip_at("Email copied to clipboard" if getattr(self, 'english_mode', False) else "Correo copiado al portapapeles", x, y)
+                self._show_tooltip_at(msg, x, y)
+            elif widget is not None:
+                self._show_tooltip_temporal(msg, widget=widget)
 
-        mail = tk.Label(pad, text="click2folders@gmail.com",
-                        font=("Segoe UI", 11, "underline"), fg="blue", cursor="hand2")
+        mail_row = ctk.CTkFrame(pad, fg_color="#e8eef5")
+        mail_row.pack(pady=(0, 8))
+        mail = ctk.CTkLabel(mail_row, text="click2folders@gmail.com",
+                            font=("Segoe UI", 15, "underline"), text_color="#3b82f6", cursor="hand2")
+        mail.pack(side="left", padx=(0, 10))
         mail.bind("<Button-1>", copy_mail)
-        mail.pack(pady=(0, 10))
-        ttk.Label(pad, text="Developed by: Germán Vargas" if eng else "Desarrollado por: Germán Vargas", font=("Segoe UI", 9)).pack(pady=(6, 10))
-        ttk.Label(pad, text="© 2026 Click2Folders. All rights reserved." if eng else "© 2026 Click2Folders. Todos los derechos reservados.", font=("Segoe UI", 8)).pack()
+        mail_icon = self._action_icon(mail_row, "⧉", lambda: copy_mail(widget=mail_icon))
+        mail_icon.pack(side="left")
+        self.support_win.win = w
+        safe_icon(w)
         center_window(w, self)
         w.deiconify()
-        self.support_win.win = w
-        safe_icon(self.support_win.win)
         for sw in (w, pad):
             sw.bind("<Button-3>", lambda e: "break")
             sw.bind("<Button-2>", lambda e: "break")
@@ -1784,9 +2560,9 @@ class Click2FoldersApp(tk.Tk):
         tooltip = tk.Toplevel(self)
         tooltip.wm_overrideredirect(True)
         tooltip.wm_geometry(f"+{x}+{y}")
-        label = tk.Label(tooltip, text=message,
-                         background="lightyellow", relief="solid", borderwidth=1,
-                         font=("Segoe UI", 9), padx=8, pady=4)
+        label = ctk.CTkLabel(tooltip, text=message,
+                             fg_color="#fef3c7", text_color="#92400e", corner_radius=8,
+                             font=("Segoe UI", 11), padx=10, pady=6)
         label.pack()
         tooltip.after(2000, lambda: tooltip.destroy())
 
@@ -1802,131 +2578,256 @@ class Click2FoldersApp(tk.Tk):
             else:
                 x, y = self.winfo_rootx() + 100, self.winfo_rooty() + 100
             tooltip.wm_geometry(f"+{x}+{y}")
-            tk.Label(tooltip, text=message, background="lightyellow", relief="solid",
-                     borderwidth=1, font=("Segoe UI", 9), padx=8, pady=4).pack()
+            ctk.CTkLabel(tooltip, text=message, fg_color="#fef3c7", text_color="#92400e",
+                        corner_radius=8, font=("Segoe UI", 11), padx=10, pady=6).pack()
             tooltip.after(2000, lambda: tooltip.destroy() if tooltip.winfo_exists() else None)
         except Exception:
             pass
 
     def on_donate(self):
+        try:
+            self._do_on_donate()
+        except Exception as ex:
+            import traceback
+            traceback.print_exc()
+            try:
+                self._show_modern_popup(f"Error: {ex}")
+            except Exception:
+                pass
+
+    def _do_on_donate(self):
         self._close_aux_windows()
         w = tk.Toplevel(self)
+        w.withdraw()
         eng = getattr(self, 'english_mode', False)
         w.title("Donations" if eng else "Donaciones")
         w.resizable(False, False)
+        w.configure(bg="#f0f4f8")
         safe_icon(w)
-        w.withdraw()
 
-        pad = ttk.Frame(w, padding=20)
-        pad.pack(fill="both", expand=True)
+        pad = ctk.CTkFrame(w, fg_color="#e8eef5", corner_radius=12)
+        pad.pack(fill="both", expand=True, padx=15, pady=15)
 
         # Títulos
-        ttk.Label(pad, text="Thank you for using Click2Folders!" if eng else "¡Gracias por usar Click2Folders!", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 6))
-        ttk.Label(pad, text="If you like the program, consider donating to support its development!" if eng else "¡Si te gusta el programa, considera donar para apoyar su desarrollo!", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 24))
+        ctk.CTkLabel(pad, text="Thank you for using Click2Folders!" if eng else "¡Gracias por usar Click2Folders!", 
+                     font=("Segoe UI", 14, "bold"), text_color="#1e3a5f", justify="center").pack(pady=(0, 4))
+        ctk.CTkLabel(pad, text="Click2Folders is free and has no annoying ads." if eng else "Click2Folders es libre y no tiene molestos anuncios.", 
+                     font=("Segoe UI", 12), text_color="#475569", justify="center").pack(pady=(0, 3))
+        ctk.CTkLabel(pad, text="Consider donating to keep it that way!" if eng else "¡Considera donar para que siga siendo así!", 
+                     font=("Segoe UI", 12, "bold"), text_color="#475569", justify="center").pack(pady=(0, 10))
 
         # --- PAYPAL ---
-        paypal_frame = ttk.Frame(pad)
-        paypal_frame.pack(fill="x", pady=(0, 10))
-        paypal_row = ttk.Frame(paypal_frame)
-        paypal_row.pack(anchor="center")
-        paypal_logo = load_image("BAUL/paypal-logo.jpg", max_width=90, max_height=50)
+        paypal_outer = ctk.CTkFrame(pad, fg_color="white", corner_radius=12, border_width=2, border_color="#1e3a5f")
+        paypal_outer.pack(fill="x", pady=(0, 6), padx=10)
+        paypal_content = ctk.CTkFrame(paypal_outer, fg_color="white", corner_radius=12)
+        paypal_content.pack(anchor="center", pady=8, padx=8)
+        paypal_logo = load_image("BAUL/paypal-logo.jpg", max_width=100, max_height=55)
         if paypal_logo:
-            lbl = tk.Label(paypal_row, image=paypal_logo, cursor="hand2")
+            lbl = ctk.CTkLabel(paypal_content, image=paypal_logo, text="", cursor="hand2", fg_color="white")
             lbl.image = paypal_logo
-            lbl.pack(side="left")
+            lbl.pack(side="left", padx=12)
             lbl.bind("<Button-1>", lambda e: webbrowser.open("https://www.paypal.com/donate?hosted_button_id=JMPWGD5VA32UW"))
 
         paypal_btn_img = load_image("BAUL/paypal_donate.gif")
         if paypal_btn_img:
-            btn = tk.Label(paypal_row, image=paypal_btn_img, cursor="hand2")
+            btn = ctk.CTkLabel(paypal_content, image=paypal_btn_img, text="", cursor="hand2", fg_color="white")
             btn.image = paypal_btn_img
-            btn.pack(side="left", padx=(10, 0))
+            btn.pack(side="left", padx=(12, 0))
             btn.bind("<Button-1>", lambda e: webbrowser.open("https://www.paypal.com/donate?hosted_button_id=JMPWGD5VA32UW"))
+        self._action_icon(paypal_content, "↗", lambda: webbrowser.open("https://www.paypal.com/donate?hosted_button_id=JMPWGD5VA32UW")).pack(side="left", padx=(14, 6))
 
-        ttk.Separator(pad, orient='horizontal').pack(fill='x', pady=8)
+        # Separador
+        ctk.CTkFrame(pad, fg_color="#e8eef5", height=1).pack(fill="x", pady=1, padx=10)
 
         # --- NEQUI ---
-        nequi_frame = ttk.Frame(pad)
-        nequi_frame.pack(fill="x", pady=(0, 6))
-        nequi_row = ttk.Frame(nequi_frame)
-        nequi_row.pack(anchor="center")
-        nequi_logo = load_image("BAUL/nequi.jpg", max_width=60, max_height=40)
-        if nequi_logo:
-            lbl = tk.Label(nequi_row, image=nequi_logo)
-            lbl.image = nequi_logo
-            lbl.pack(side="left", padx=(0, 10))
-        nequi_right = ttk.Frame(nequi_row)
-        nequi_right.pack(side="left", fill="x", expand=True)
-        ttk.Label(nequi_right, text="Donate with Nequi:" if eng else "Donaciones por Nequi:", font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        nequi_outer = ctk.CTkFrame(pad, fg_color="white", corner_radius=12, border_width=2, border_color="#1e3a5f")
+        nequi_outer.pack(fill="x", pady=(0, 6), padx=10)
+        nequi_content = ctk.CTkFrame(nequi_outer, fg_color="white", corner_radius=12)
+        nequi_content.pack(anchor="center", pady=8, padx=8)
 
         def open_nequi_checkout(e=None):
             try:
-                webbrowser.open("https://checkout.nequi.wompi.co/method")
+                webbrowser.open("https://checkout.nequi.wompi.co/l/EYGaPV")
             except Exception:
                 self.clipboard_clear()
-                self.clipboard_append("https://checkout.nequi.wompi.co/method")
+                self.clipboard_append("https://checkout.nequi.wompi.co/l/EYGaPV")
 
-        nequi_link = tk.Label(nequi_right, text="https://checkout.nequi.wompi.co/method", font=("Segoe UI", 9), fg="blue", cursor="hand2")
+        nequi_logo = load_image("BAUL/nequi.jpg", max_width=60, max_height=40)
+        if nequi_logo:
+            lbl = ctk.CTkLabel(nequi_content, image=nequi_logo, text="", cursor="hand2", fg_color="white")
+            lbl.image = nequi_logo
+            lbl.pack(side="left", padx=(10, 10))
+            lbl.bind("<Button-1>", open_nequi_checkout)
+        nequi_right = ctk.CTkFrame(nequi_content, fg_color="white")
+        nequi_right.pack(side="left")
+        ctk.CTkLabel(nequi_right, text="Donate with Nequi:" if eng else "Donaciones por Nequi:", 
+                     font=("Segoe UI", 12, "bold"), text_color="#1e3a5f", fg_color="white").pack(anchor="w")
+
+        nequi_link = ctk.CTkLabel(nequi_right, text="https://checkout.nequi.wompi.co/l/EYGaPV", 
+                                  font=("Segoe UI", 11), text_color="#3b82f6", cursor="hand2", fg_color="white")
         nequi_link.bind("<Button-1>", open_nequi_checkout)
         nequi_link.pack(anchor="w")
+        self._action_icon(nequi_content, "↗", open_nequi_checkout).pack(side="left", padx=(12, 6))
 
-        ttk.Separator(pad, orient='horizontal').pack(fill='x', pady=8)
+        # Separador
+        ctk.CTkFrame(pad, fg_color="#e8eef5", height=1).pack(fill="x", pady=1, padx=10)
 
         # --- TETHER ---
-        tether_frame = ttk.Frame(pad)
-        tether_frame.pack(fill="x", pady=(0, 6))
-        tether_row = ttk.Frame(tether_frame)
-        tether_row.pack(anchor="center")
+        tether_outer = ctk.CTkFrame(pad, fg_color="white", corner_radius=12, border_width=2, border_color="#1e3a5f")
+        tether_outer.pack(fill="x", pady=(0, 6), padx=10)
+        tether_content = ctk.CTkFrame(tether_outer, fg_color="white", corner_radius=12)
+        tether_content.pack(anchor="center", pady=8, padx=8)
+        tether_left = ctk.CTkFrame(tether_content, fg_color="white")
+        tether_left.pack(side="left", padx=(10, 10))
         tether_logo = load_image("BAUL/Tether.png", max_width=50, max_height=50)
         if tether_logo:
-            lbl = tk.Label(tether_row, image=tether_logo)
+            lbl = ctk.CTkLabel(tether_left, image=tether_logo, text="", fg_color="white")
             lbl.image = tether_logo
-            lbl.pack(side="left", padx=(0, 10))
-        tether_right = ttk.Frame(tether_row)
-        tether_right.pack(side="left", fill="x", expand=True)
-        ttk.Label(tether_right, text="Tether USDT (TRC20):", font=("Segoe UI", 10, "bold")).pack(anchor="w")
+            lbl.pack()
+        tether_right = ctk.CTkFrame(tether_content, fg_color="white")
+        tether_right.pack(side="left")
+        ctk.CTkLabel(tether_right, text="Tether USDT (TRC20):", 
+                     font=("Segoe UI", 12, "bold"), text_color="#1e3a5f", fg_color="white").pack(anchor="w")
 
-        qr_container = ttk.Frame(tether_right)
-        qr_container.pack(anchor="w")
-        threading.Thread(target=lambda: self._load_qr_async(qr_container, w), daemon=True).start()
-
-        def copy_usdt(e=None):
+        def copy_usdt(e=None, widget=None):
             self.clipboard_clear()
             self.clipboard_append("TFKbpPK5n5Dv3NV3svEDAyd68fxNyUzmDn")
-            self._show_tooltip_temporal("USDT address copied to clipboard" if getattr(self, 'english_mode', False) else "Dirección USDT copiada al portapapeles", event=e)
+            msg = "USDT address copied to clipboard" if getattr(self, 'english_mode', False) else "Dirección USDT copiada al portapapeles"
+            if e is not None:
+                self._show_tooltip_temporal(msg, event=e)
+            elif widget is not None:
+                self._show_tooltip_temporal(msg, widget=widget)
 
-        usdt_label = tk.Label(tether_right, text="TFKbpPK5n5Dv3NV3svEDAyd68fxNyUzmDn", font=("Segoe UI", 9), fg="blue", cursor="hand2")
+        addr_row = ctk.CTkFrame(tether_right, fg_color="white")
+        addr_row.pack(anchor="w")
+        usdt_label = ctk.CTkLabel(addr_row, text="TFKbpPK5n5Dv3NV3svEDAyd68fxNyUzmDn", 
+                                  font=("Segoe UI", 11), text_color="#3b82f6", cursor="hand2", fg_color="white")
         usdt_label.bind("<Button-1>", copy_usdt)
-        usdt_label.pack(anchor="w")
+        usdt_label.pack(side="left", padx=(0, 8))
+        usdt_icon = self._action_icon(addr_row, "⧉", lambda: copy_usdt(widget=usdt_icon))
+        usdt_icon.pack(side="left")
 
-        ttk.Separator(pad, orient='horizontal').pack(fill='x', pady=8)
+        # Separador
+        ctk.CTkFrame(pad, fg_color="#e8eef5", height=1).pack(fill="x", pady=1, padx=10)
 
         # Pie
-        ttk.Label(pad, text="Thank you for your support!" if eng else "¡Gracias por tu apoyo!", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 6))
-        ttk.Label(pad, text="Developed by: Germán Vargas" if eng else "Desarrollado por: Germán Vargas", font=("Segoe UI", 10, "bold"), justify="center").pack(pady=(0, 2))
-        ttk.Label(pad, text="© 2026 Click2Folders. All rights reserved." if eng else "© 2026 Click2Folders. Todos los derechos reservados.", font=("Segoe UI", 9), justify="center").pack(pady=(0, 6))
+        thanks_emoji_frame = tk.Frame(pad, bg="#e8eef5")
+        thanks_emoji_frame.pack(pady=(0, 4))
+        ctk.CTkLabel(thanks_emoji_frame, text="Thank you for your support!" if eng else "¡Gracias por tu apoyo!", 
+                     font=("Segoe UI", 13, "bold"), text_color="#1e3a5f", justify="center", bg_color="#e8eef5").pack(side="left")
+        emoji_img = load_image("BAUL/Emoji.png", max_width=80, max_height=80)
+        if emoji_img:
+            emoji_lbl = tk.Label(thanks_emoji_frame, image=emoji_img, bg="#e8eef5")
+            emoji_lbl.image = emoji_img
+            emoji_lbl.pack(side="left", padx=(10, 0))
+        ctk.CTkLabel(pad, text="Developed by: Germán Vargas" if eng else "Desarrollado por: Germán Vargas", 
+                     font=("Segoe UI", 12, "bold"), text_color="#475569", justify="center").pack(pady=(0, 2))
+        ctk.CTkLabel(pad, text="© 2026 Click2Folders. All rights reserved." if eng else "© 2026 Click2Folders. Todos los derechos reservados.", 
+                     font=("Segoe UI", 11), text_color="#64748b", justify="center").pack(pady=(0, 4))
 
         # === CENTRADO Y FOCO ===
-        def finalize_window():
-            w.update_idletasks()
-            sw = w.winfo_screenwidth()
-            sh = w.winfo_screenheight()
-            x = (sw - w.winfo_width()) // 2
-            y = max(30, (sh - w.winfo_height()) // 2 - 20)
-            w.geometry(f"+{x}+{y}")
-            w.deiconify()
-            w.focus_force()
-            w.lift()
-        self.after(350, finalize_window)
+        w.update_idletasks()
+        w.minsize(440, 420)
+        center_window(w)
+        w.deiconify()
+        w.focus_force()
+        w.lift()
         self.donate_win.win = w
+        w.protocol("WM_DELETE_WINDOW", lambda: (w.destroy(), self._on_donate_closed()))
         for dw in (w, pad):
             dw.bind("<Button-3>", lambda e: "break")
             dw.bind("<Button-2>", lambda e: "break")
 
     def _check_launch_donation(self):
         count = _get_launch_count()
-        if count > 0 and count % 5 == 0:
+        self._donate_shown = False
+        self._donate_closed = False
+        if count > 1 and count % 2 == 0:
+            self._donate_shown = True
             self.on_donate()
+        else:
+            self._donate_closed = True
+        self._check_for_updates()
+
+    def _on_donate_closed(self):
+        self._donate_closed = True
+        self._try_show_update()
+
+    def _try_show_update(self):
+        if self._has_update and self._donate_closed:
+            self.after(500, self._show_update_popup)
+        elif not self._update_checked:
+            self.after(200, self._try_show_update)
+
+    def _check_for_updates(self):
+        if self._update_checked:
+            return
+        self._update_checked = True
+        def _do_check():
+            try:
+                import urllib.request
+                import json
+                req = urllib.request.Request(GITHUB_API_URL, headers={"User-Agent": "Click2Folders"})
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    data = json.loads(response.read().decode())
+                    remote_version = data.get("tag_name", "")
+                    if remote_version and self._version_is_newer(remote_version, APP_VERSION):
+                        self._has_update = True
+                        self._latest_release_url = data.get("html_url", GITHUB_RELEASES_URL)
+                        if not self._donate_shown:
+                            self.after(100, self._show_update_popup)
+            except Exception as ex:
+                print(f"[Update check error] {ex}")
+        threading.Thread(target=_do_check, daemon=True).start()
+
+    def _version_is_newer(self, remote, local):
+        def parse(v):
+            v = v.lstrip("v").split(".")
+            return tuple(int(x) for x in v)
+        try:
+            return parse(remote) > parse(local)
+        except Exception:
+            return False
+
+    def _show_update_popup(self):
+        eng = getattr(self, 'english_mode', False)
+        popup = tk.Toplevel(self)
+        popup.withdraw()
+        popup.configure(bg="#f0f4f8")
+        popup.title("Update available" if eng else "Actualización disponible")
+        popup.resizable(False, False)
+        popup.transient(self)
+        popup.grab_set()
+        safe_icon(popup)
+        frm = ctk.CTkFrame(popup, fg_color="#e8eef5", corner_radius=12)
+        frm.pack(fill="both", expand=True, padx=15, pady=15)
+        t1_es = "🚀 ¡Actualización disponible!"
+        t1_en = "🚀 Update available!"
+        lbl1 = tk.Label(frm, text=(t1_en if eng else t1_es),
+                 font=("Segoe UI", 12, "bold"), fg="#1e3a5f", justify="center", bg="#f0f4f8")
+        lbl1.pack(pady=(10, 8))
+        t2_es = f"Descarga la última versión desde GitHub.\n{APP_VERSION}"
+        t2_en = f"Download the latest version from GitHub.\n{APP_VERSION}"
+        lbl2 = tk.Label(frm, text=(t2_en if eng else t2_es),
+                 font=("Segoe UI", 10), fg="#475569", justify="center", bg="#f0f4f8")
+        lbl2.pack(pady=(0, 12))
+        btn_frame = tk.Frame(frm, bg="#e8eef5")
+        btn_frame.pack(pady=(0, 5))
+        d_es, d_en = "Descargar", "Download"
+        l_es, l_en = "Después", "Later"
+        btn_dl = ctk.CTkButton(btn_frame, text=(d_en if eng else d_es),
+                      fg_color="#10b981", hover_color="#059669", text_color="white",
+                      command=lambda: (webbrowser.open(GITHUB_RELEASES_URL), popup.destroy()))
+        btn_dl.pack(side="left", padx=6)
+        btn_later = ctk.CTkButton(btn_frame, text=(l_en if eng else l_es),
+                      fg_color="#64748b", hover_color="#475569", text_color="white",
+                      command=popup.destroy)
+        btn_later.pack(side="left", padx=6)
+        self._register_live_popup(popup, "Actualización disponible", "Update available",
+                                  [(lbl1, t1_es, t1_en), (lbl2, t2_es, t2_en),
+                                   (btn_dl, d_es, d_en), (btn_later, l_es, l_en)])
+        center_window(popup, self)
+        popup.deiconify()
 
     # === FUNCIONES AUXILIARES PARA DONACIONES ===
     def _load_donation_img_async(self, container, url, parent, display_fn):
@@ -1955,7 +2856,7 @@ class Click2FoldersApp(tk.Tk):
             pass
 
     def _display_qr(self, container, qr_photo, parent):
-        qr_label = tk.Label(container, image=qr_photo)
+        qr_label = ctk.CTkLabel(container, image=qr_photo, text="")
         qr_label.image = qr_photo
         qr_label.pack()
         self.after(100, lambda: center_window(parent, self))
@@ -1974,34 +2875,61 @@ class Click2FoldersApp(tk.Tk):
 
     def _show_image_window(self, parent, img_path):
         w = tk.Toplevel(parent)
-        w.resizable(False, False)
         w.withdraw()
-        frm = ttk.Frame(w, padding=10)
+        w.configure(bg="#f0f4f8")
+        w.resizable(False, False)
+        frm = tk.Frame(w, bg="#f0f4f8")
         frm.pack(fill="both", expand=True)
         img = load_image(img_path, max_width=860, max_height=560)
         if img is None:
-            lbl = tk.Label(frm, text=f"No se pudo cargar la imagen:\n{img_path}", fg="red", justify="center")
+            lbl = tk.Label(frm, text=f"No se pudo cargar la imagen:\n{img_path}", fg="#ef4444", justify="center", bg="#f0f4f8")
             lbl.pack()
         else:
-            lbl = tk.Label(frm, image=img)
+            lbl = ctk.CTkLabel(frm, image=img, text="")
             lbl.image = img
             lbl.pack()
         center_window(w, parent)
         w.deiconify()
         return w
 
+    def _register_live_popup(self, win, title_es, title_en, widgets):
+        """Registra un popup modal para que sus textos se actualicen
+        en vivo cuando el usuario cambia de idioma con el botón Traducir.
+        widgets: lista de (widget, texto_es, texto_en)."""
+        entry = {"win": win, "title_es": title_es, "title_en": title_en, "widgets": widgets}
+        self._live_popups.append(entry)
+
+        def _on_destroy(event, ent=entry):
+            if event.widget is win:
+                try:
+                    self._live_popups.remove(ent)
+                except ValueError:
+                    pass
+        win.bind("<Destroy>", _on_destroy, add="+")
+
     def _show_modern_popup(self, message):
         popup = tk.Toplevel(self)
+        popup.withdraw()
+        popup.configure(bg="#f0f4f8")
         eng_pop = getattr(self, 'english_mode', False)
         popup.title("Notice" if eng_pop else "Aviso")
         popup.resizable(False, False)
         popup.transient(self)
         popup.grab_set()
         safe_icon(popup)
-        frm = ttk.Frame(popup, padding=16)
-        frm.pack(fill="both", expand=True)
-        tk.Label(frm, text=message, font=("Segoe UI", 10), justify="center").pack(pady=(10, 20))
-        ttk.Button(frm, text="OK" if eng_pop else "Aceptar", command=popup.destroy).pack()
+        if isinstance(message, tuple):
+            msg_es, msg_en = message
+        else:
+            msg_es = msg_en = message
+        frm = ctk.CTkFrame(popup, fg_color="#e8eef5", corner_radius=12)
+        frm.pack(fill="both", expand=True, padx=15, pady=15)
+        lbl = tk.Label(frm, text=(msg_en if eng_pop else msg_es), font=("Segoe UI", 10), justify="center", fg="#1e3a5f", bg="#f0f4f8")
+        lbl.pack(pady=(10, 20))
+        ok_btn = ctk.CTkButton(frm, text="OK" if eng_pop else "Aceptar", command=popup.destroy,
+                      fg_color="#3b82f6", hover_color="#2563eb", text_color="white")
+        ok_btn.pack()
+        self._register_live_popup(popup, "Aviso", "Notice",
+                                  [(lbl, msg_es, msg_en), (ok_btn, "Aceptar", "OK")])
         center_window(popup, self)
         popup.deiconify()
 
@@ -2014,16 +2942,22 @@ class Click2FoldersApp(tk.Tk):
         folder_norm = os.path.normcase(os.path.abspath(folder))
         if folder_norm in self.queue:
             return
-        file_count = count_all_files_including_organized(folder)
+        self._clear_placeholder_rows()
+        # Resetear log y contadores al agregar carpetas (nueva sesión)
+        self._clear_log()
+        self._reset_counters()
         eng_add = getattr(self, 'english_mode', False)
-        status = f"{file_count} {'files to organize' if eng_add else 'archivos para organizar'}"
+        status = "Sin organizar" if not eng_add else "Unorganized"
+        files, subfolders = count_folder_contents(folder)
+        cantidad = f"{subfolders} {'carpetas' if not eng_add else 'folders'} / {files} {'Archivos en total' if not eng_add else 'Total files'}" if (files > 0 or subfolders > 0) else ("Carpeta Vacía" if not eng_add else "Empty Folder")
         tag = "oddrow" if len(self.queue) % 2 == 0 else "evenrow"
-        item_id = self.tree.insert("", "end", values=("☐", folder, status), tags=(tag,))
+        item_id = self.tree.insert("", "end", values=("☐", folder, cantidad, status), tags=(tag,))
         if hasattr(self, '_tree_checked'):
             self._tree_checked[item_id] = False
         self.queue.append(folder_norm)
         self.folder_indexes[folder_norm] = item_id
         self._update_undo_button_state()
+        self.after(100, self._fit_folder)
 
     def on_add_multiple_folders(self):
         if getattr(self, '_no_show_multiple_intro', False):
@@ -2032,20 +2966,22 @@ class Click2FoldersApp(tk.Tk):
         eng = getattr(self, 'english_mode', False)
         # Ventana de instrucción previa
         intro = tk.Toplevel(self)
+        intro.withdraw()
+        intro.configure(bg="#f0f4f8")
+        eng = getattr(self, 'english_mode', False)
         intro.title("Add multiple folders" if eng else "Agregar varias carpetas")
         intro.resizable(False, False)
         intro.transient(self)
         intro.grab_set()
         safe_icon(intro)
-        frm = ttk.Frame(intro, padding=20)
-        frm.pack(fill="both", expand=True)
-        tk.Label(frm, text="How does it work?" if eng else "¿Cómo funciona?", font=("Segoe UI", 11, "bold")).pack(pady=(0,10))
+        frm = ctk.CTkFrame(intro, fg_color="#e8eef5", corner_radius=12)
+        frm.pack(fill="both", expand=True, padx=15, pady=15)
+        tk.Label(frm, text="How does it work?" if eng else "¿Cómo funciona?", font=("Segoe UI", 11, "bold"), fg="#1e3a5f", bg="#f0f4f8").pack(pady=(0,10))
         tk.Label(frm, text="Select a root folder and the program will show\nall its subfolders so you can choose which ones to add." if eng else "Selecciona una carpeta raíz y el programa mostrará\ntodas sus subcarpetas para que elijas cuáles agregar.",
-                 font=("Segoe UI", 10), justify="center").pack(pady=(0,16))
-        tk.Label(frm, text="Example: 'Photos' folder with '2020', 'Trips', 'Family' subfolders...\nSelect 'Photos' and pick the ones you want to organize." if eng else "Ej: carpeta 'Fotos' con subcarpetas '2020', 'Viajes', 'Familia'...\nSelecciona 'Fotos' y elige las que deseas organizar.",
-                 font=("Segoe UI", 9), justify="center", foreground="#444").pack(pady=(0,16))
+                     font=("Segoe UI", 10), justify="center", fg="#1e3a5f", bg="#f0f4f8").pack(pady=(0,16))
         no_show_intro_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(frm, text="Don't show this message again" if eng else "No volver a mostrar este mensaje", variable=no_show_intro_var).pack(pady=(0, 10))
+        ctk.CTkCheckBox(frm, text="Don't show this message again" if eng else "No volver a mostrar este mensaje", variable=no_show_intro_var,
+                        fg_color="#3b82f6", hover_color="#1d4ed8", text_color="#1e3a5f").pack(pady=(0, 10))
         def do_intro_ok():
             self._no_show_multiple_intro = no_show_intro_var.get()
             intro.grab_release()
@@ -2054,10 +2990,12 @@ class Click2FoldersApp(tk.Tk):
         def do_intro_cancel():
             intro.grab_release()
             intro.destroy()
-        btn_row = ttk.Frame(frm)
+        btn_row = tk.Frame(frm, bg="#f0f4f8")
         btn_row.pack()
-        ttk.Button(btn_row, text="Got it" if eng else "Entendido", command=do_intro_ok).pack(side="left", padx=6)
-        ttk.Button(btn_row, text="Cancel" if eng else "Cancelar", command=do_intro_cancel).pack(side="left", padx=6)
+        ctk.CTkButton(btn_row, text="Got it" if eng else "Entendido", command=do_intro_ok,
+                      fg_color="#3b82f6", hover_color="#2563eb", text_color="white").pack(side="left", padx=6)
+        ctk.CTkButton(btn_row, text="Cancel" if eng else "Cancelar", command=do_intro_cancel,
+                      fg_color="#64748b", hover_color="#475569", text_color="white").pack(side="left", padx=6)
         center_window(intro, self)
         intro.deiconify()
 
@@ -2080,17 +3018,18 @@ class Click2FoldersApp(tk.Tk):
             return
 
         win = tk.Toplevel(self)
+        win.withdraw()
+        win.configure(bg="#f0f4f8")
         eng_pick2 = getattr(self, 'english_mode', False)
         win.title("Select folders" if eng_pick2 else "Seleccionar Carpetas")
         win.resizable(True, True)
         win.transient(self)
         win.grab_set()
         safe_icon(win)
-        win.withdraw()
 
-        ttk.Label(win, text=f"Raíz: {root_folder}", font=("Segoe UI", 9), foreground="#555").pack(anchor="w", padx=12, pady=(10,0))
+        tk.Label(win, text=f"Raíz: {root_folder}", font=("Segoe UI", 9), fg="#64748b", bg="#f0f4f8").pack(anchor="w", padx=12, pady=(10,0))
 
-        sel_bar = ttk.Frame(win)
+        sel_bar = tk.Frame(win, bg="#f0f4f8")
         sel_bar.pack(fill="x", padx=12, pady=(0,4))
         check_vars = {}
         cb_list = []
@@ -2105,8 +3044,10 @@ class Click2FoldersApp(tk.Tk):
             for var, cb in check_vars.values(): var.set(False)
 
         eng_pick = getattr(self, 'english_mode', False)
-        ttk.Button(sel_bar, text="Deselect all" if eng_pick else "Deseleccionar todas", command=deselect_all).pack(side="left", padx=4)
-        ttk.Button(sel_bar, text="Select all" if eng_pick else "Seleccionar todas", command=select_all).pack(side="left", padx=4)
+        ctk.CTkButton(sel_bar, text="Select all" if eng_pick else "Seleccionar todo", command=select_all,
+                      fg_color="#64748b", hover_color="#475569", text_color="white", corner_radius=8, height=28, font=("Segoe UI", 11)).pack(side="left", padx=4)
+        ctk.CTkButton(sel_bar, text="Deselect all" if eng_pick else "Deseleccionar todo", command=deselect_all,
+                      fg_color="#64748b", hover_color="#475569", text_color="white", corner_radius=8, height=28, font=("Segoe UI", 11)).pack(side="left", padx=4)
 
         # Tamaño adaptable: máx 15 items visibles, con scroll si hay más
         ITEM_H = 28
@@ -2115,16 +3056,16 @@ class Click2FoldersApp(tk.Tk):
         list_h = min(n * ITEM_H + 10, MAX_VIS * ITEM_H)
         use_scroll = n > MAX_VIS
 
-        frame_list = ttk.Frame(win)
+        frame_list = tk.Frame(win, bg="#f0f4f8")
         frame_list.pack(fill="both", expand=use_scroll, padx=12, pady=4)
 
         if use_scroll:
             canvas_w = tk.Canvas(frame_list, highlightthickness=0, height=list_h)
-            vsb = ttk.Scrollbar(frame_list, orient="vertical", command=canvas_w.yview)
+            vsb = ctk.CTkScrollbar(frame_list, command=canvas_w.yview, fg_color="#cbd5e1", button_color="#94a3b8")
             canvas_w.configure(yscrollcommand=vsb.set)
-            vsb.pack(side="right", fill="y")
+            vsb.pack(side="right", fill="y", padx=(2, 0), pady=5)
             canvas_w.pack(side="left", fill="both", expand=True)
-            inner = ttk.Frame(canvas_w)
+            inner = tk.Frame(canvas_w, bg="#f0f4f8")
             inner_id = canvas_w.create_window((0,0), window=inner, anchor="nw")
             inner.bind("<Configure>", lambda e: canvas_w.configure(scrollregion=canvas_w.bbox("all")))
             canvas_w.bind("<Configure>", lambda e: canvas_w.itemconfig(inner_id, width=e.width))
@@ -2160,7 +3101,7 @@ class Click2FoldersApp(tk.Tk):
                 return handler
             cb.bind("<Button-1>", make_handler(idx))
 
-        btns = ttk.Frame(win)
+        btns = tk.Frame(win, bg="#f0f4f8")
         btns.pack(pady=8)
 
         def do_add():
@@ -2169,14 +3110,20 @@ class Click2FoldersApp(tk.Tk):
             win.grab_release()
             win.destroy()
             added = 0
+            if to_add:
+                self._clear_placeholder_rows()
+                # Resetear log y contadores al agregar carpetas (nueva sesión)
+                self._clear_log()
+                self._reset_counters()
             for path in to_add:
                 norm = os.path.normcase(os.path.abspath(path))
                 if norm not in self.queue:
-                    file_count = count_all_files_including_organized(path)
                     eng_s = getattr(self, 'english_mode', False)
-                    status = f"{file_count} {'files to organize' if eng_s else 'archivos para organizar'}"
+                    files, subfolders = count_folder_contents(path)
+                    cantidad = f"{subfolders} {'carpetas' if not eng_s else 'folders'} / {files} {'Archivos en total' if not eng_s else 'Total files'}" if (files > 0 or subfolders > 0) else ("Carpeta Vacía" if not eng_s else "Empty Folder")
+                    status = "Sin organizar" if not eng_s else "Unorganized"
                     tag = "oddrow" if len(self.queue) % 2 == 0 else "evenrow"
-                    item_id = self.tree.insert("", "end", values=("☐", path, status), tags=(tag,))
+                    item_id = self.tree.insert("", "end", values=("☐", path, cantidad, status), tags=(tag,))
                     if hasattr(self, '_tree_checked'): self._tree_checked[item_id] = False
                     self.queue.append(norm)
                     self.folder_indexes[norm] = item_id
@@ -2184,6 +3131,7 @@ class Click2FoldersApp(tk.Tk):
             self._update_undo_button_state()
             if added:
                 self._log(f"✓ {added} {'folder(s) added' if getattr(self, 'english_mode', False) else 'carpeta(s) agregada(s)'}")
+                self.after(100, self._fit_folder)
 
         def do_cancel():
             if canvas_w: canvas_w.unbind_all("<MouseWheel>")
@@ -2192,8 +3140,10 @@ class Click2FoldersApp(tk.Tk):
             # No agrega nada
 
         eng_b = getattr(self, 'english_mode', False)
-        ttk.Button(btns, text="Add selected" if eng_b else "Agregar seleccionadas", command=do_add).pack(side="left", padx=8)
-        ttk.Button(btns, text="Cancel" if eng_b else "Cancelar", command=do_cancel).pack(side="left", padx=8)
+        ctk.CTkButton(btns, text="Add selected" if eng_b else "Agregar seleccionadas", command=do_add,
+                      fg_color="#10b981", hover_color="#059669", text_color="white").pack(side="left", padx=8)
+        ctk.CTkButton(btns, text="Cancel" if eng_b else "Cancelar", command=do_cancel,
+                      fg_color="#ef4444", hover_color="#dc2626", text_color="white").pack(side="left", padx=8)
 
         # Tamaño adaptable: no exceder la pantalla menos barra de tareas
         win.update_idletasks()
@@ -2216,67 +3166,76 @@ class Click2FoldersApp(tk.Tk):
             self.after(0, lambda fp=folder_path, e3=getattr(self, 'english_mode', False): self._log(f"✓ {'Organization undone in:' if e3 else 'Organización deshecha en:'} {os.path.basename(fp)}"))
             if show_message:
                 eng_und = getattr(self, 'english_mode', False)
-                messagebox.showinfo("Undone" if eng_und else "Desorganizada",
+                messagebox.showinfo("Sin organizar" if not eng_und else "Undone",
                                     "The organization has been undone successfully.\nAll files have been moved back to the root folder." if eng_und else "La organización ha sido deshecha correctamente.\nTodos los archivos han sido movidos de vuelta a la carpeta raíz.")
         except Exception as e:
-            self.after(0, lambda: self._log(f"Error deshaciendo organización: {e}"))
+            self.after(0, lambda err=e, e4=getattr(self, 'english_mode', False): self._log(
+                f"{'Error undoing organization:' if e4 else 'Error deshaciendo organización:'} {err}"))
             if show_message:
                 eng_und2 = getattr(self, 'english_mode', False)
                 messagebox.showerror("Error" if eng_und2 else "Error", f"Could not undo the organization: {e}" if eng_und2 else f"No se pudo deshacer la organización: {e}")
 
     def _set_status(self, msg):
         base_msg = msg
-        self.status_label.config(text=base_msg)
-        self.progress.config(mode="determinate")
+        # Resolver el idioma AL MOMENTO y en cada tick del animation:
+        # si el usuario cambia de idioma mientras trabaja, el mensaje
+        # naranja cambia solo (antes se quedaba en el idioma inicial)
+        self.status_label.configure(text=status_text(base_msg, getattr(self, 'english_mode', False)))
+        self.lbl_wait.configure(text="")
 
-        def animate_ellipsis(dots=0):
+        def animate_wait(dots=0):
             if not self.is_processing:
+                self.lbl_wait.configure(text="")
                 return
             ellipsis = "." * dots
-            self.status_label.config(text=base_msg + ellipsis)
+            txt = status_text(base_msg, getattr(self, 'english_mode', False))
+            self.lbl_wait.configure(text=txt + ellipsis)
             next_dots = (dots % 3) + 1
-            self.after(300, lambda: animate_ellipsis(next_dots))
+            self.after(300, lambda: animate_wait(next_dots))
 
-        animate_ellipsis()
+        animate_wait()
 
     def _open_overlay(self, first_text="Organizando archivos", indeterminate=False):
-        if self.overlay and tk.Toplevel.winfo_exists(self.overlay):
+        if self.overlay and self.overlay.winfo_exists():
             return
         self.overlay = tk.Toplevel(self)
+        self.overlay.withdraw()
+        self.overlay.configure(bg="#f0f4f8")
         self.overlay.title("Procesando")
         self.overlay.resizable(False, False)
         self.overlay.transient(self)
         self.overlay.grab_set()
         safe_icon(self.overlay)
-        frm = ttk.Frame(self.overlay, padding=12)
-        frm.pack(fill="both", expand=True)
-        self.overlay_text = tk.Label(frm, text=first_text, font=("Segoe UI", 10, "bold"))
+        frm = ctk.CTkFrame(self.overlay, fg_color="#e8eef5", corner_radius=12)
+        frm.pack(fill="both", expand=True, padx=15, pady=15)
+        self.overlay_text = tk.Label(frm, text=first_text, font=("Segoe UI", 10, "bold"), fg="#1e3a5f", bg="#f0f4f8")
         self.overlay_text.pack(pady=(4, 10))
         mode = "indeterminate" if indeterminate else "determinate"
-        self.marquee = ttk.Progressbar(frm, mode=mode, maximum=100)
+        self.marquee = ctk.CTkProgressBar(frm, mode=mode, progress_color="#3b82f6", fg_color="#e2e8f0")
         self.marquee.pack(fill="x")
         if indeterminate:
             self.marquee.start(20)
         center_window(self.overlay, None)
+        self.overlay.deiconify()
         self.update_idletasks()
 
     def _update_overlay(self, msg, indeterminate=False):
-        if self.overlay and tk.Toplevel.winfo_exists(self.overlay):
-            self.overlay_text.config(text=msg)
+        if self.overlay and self.overlay.winfo_exists():
+            self.overlay_text.configure(text=msg)
             if self.marquee:
                 new_mode = "indeterminate" if indeterminate else "determinate"
                 if self.marquee.cget("mode") != new_mode:
                     if new_mode == "indeterminate":
                         self.marquee.stop()
-                        self.marquee.config(mode="indeterminate")
+                        self.marquee.configure(mode="indeterminate")
                         self.marquee.start(20)
                     else:
                         self.marquee.stop()
-                        self.marquee.config(mode="determinate")
+                        self.marquee.configure(mode="determinate")
             self.update_idletasks()
 
     def _close_overlay(self):
-        if self.overlay and tk.Toplevel.winfo_exists(self.overlay):
+        if self.overlay and self.overlay.winfo_exists():
             if self.marquee:
                 self.marquee.stop()
             self.overlay.destroy()
@@ -2285,6 +3244,7 @@ class Click2FoldersApp(tk.Tk):
 
     def _reset_counters(self):
         self.total_analyzed = 0
+        self.total_organized = 0
         self.total_dirs_created = 0
         self.start_time = None
         self._refresh_counters()
@@ -2295,8 +3255,8 @@ class Click2FoldersApp(tk.Tk):
         minutes = int(elapsed // 60)
         seconds = int(elapsed % 60)
         eng = getattr(self, 'english_mode', False)
-        self.lbl_analyzed.configure(text=f"{'Files analyzed:' if eng else 'Archivos analizados:'} {self.total_analyzed}")
-        self.lbl_dirs.configure(text=f"{'Folders created:' if eng else 'Carpetas creadas:'} {self.total_dirs_created}")
+        self.lbl_analyzed.configure(text=f"{'Total files organized:' if eng else 'Total de archivos organizados:'} {self.total_organized}")
+        self.lbl_dirs.configure(text=f"{'Total folders created:' if eng else 'Total de carpetas creadas:'} {self.total_dirs_created}")
         self.lbl_time.configure(text=f"{'Elapsed time:' if eng else 'Tiempo transcurrido:'} {minutes}m {seconds}s")
 
     def _log(self, text):
@@ -2305,18 +3265,27 @@ class Click2FoldersApp(tk.Tk):
         self.txt.see("end")
         self.txt.configure(state="disabled")
 
+    def _log_summary(self, text):
+        self.txt.configure(state="normal")
+        self.txt.insert("end", text)
+        # Fijar el scroll al final: la última línea del log (fecha/hora final + cierre)
+        # nunca debe quedar cortada en la vista
+        self.txt.yview_moveto(1.0)
+        self.txt.configure(state="disabled")
+
     def _clear_log(self):
         self.txt.configure(state="normal")
         self.txt.delete("1.0", "end")
         self.txt.configure(state="disabled")
         try:
-            self.lbl_cf_name.config(text="None" if getattr(self, 'english_mode', False) else "Ninguna")
+            self.lbl_cf_name.configure(text="None" if getattr(self, 'english_mode', False) else "Ninguna")
         except Exception:
             pass
 
     def on_start(self):
         if not self.queue:
-            messagebox.showinfo(APP_NAME, "Add a folder to the queue to start." if getattr(self, 'english_mode', False) else "Agrega una carpeta a la cola para iniciar.")
+            self._show_modern_popup(("Agrega una carpeta a la cola para iniciar.",
+                                     "Add a folder to the queue to start."))
             return
 
         # Determinar qué carpetas procesar: marcadas con ☑
@@ -2326,22 +3295,33 @@ class Click2FoldersApp(tk.Tk):
                 if checked:
                     try:
                         folder = self.tree.item(iid)["values"][1]
-                        checked_folders.append(folder)
+                        if folder:
+                            checked_folders.append(folder)
                     except Exception:
                         pass
         
         if not checked_folders:
             popup = tk.Toplevel(self)
+            popup.withdraw()
+            popup.configure(bg="#f0f4f8")
             eng_start = getattr(self, 'english_mode', False)
             popup.title("Selection required" if eng_start else "Selección requerida")
             popup.resizable(False, False)
             popup.transient(self)
             popup.grab_set()
             safe_icon(popup)
-            frm = ttk.Frame(popup, padding=20)
-            frm.pack()
-            tk.Label(frm, text="First select the folders you want to organize by checking the checkbox (☑)." if eng_start else "Primero selecciona las carpetas que deseas organizar marcando el checkbox (☑).", font=("Segoe UI", 10), justify="center", wraplength=280).pack(pady=(0, 16))
-            ttk.Button(frm, text="Got it" if eng_start else "Entendido", command=popup.destroy).pack()
+            frm = ctk.CTkFrame(popup, fg_color="#e8eef5", corner_radius=12)
+            frm.pack(fill="both", expand=True, padx=15, pady=15)
+            t_es = "Primero selecciona las carpetas que deseas organizar marcando el checkbox (☑)."
+            t_en = "First select the folders you want to organize by checking the checkbox (☑)."
+            lbl = tk.Label(frm, text=(t_en if eng_start else t_es), font=("Segoe UI", 10), justify="center", wraplength=280, fg="#1e3a5f", bg="#f0f4f8")
+            lbl.pack(pady=(0, 16))
+            b_es, b_en = "Entendido", "Got it"
+            btn = ctk.CTkButton(frm, text=(b_en if eng_start else b_es), command=popup.destroy,
+                          fg_color="#3b82f6", hover_color="#2563eb", text_color="white")
+            btn.pack()
+            self._register_live_popup(popup, "Selección requerida", "Selection required",
+                                      [(lbl, t_es, t_en), (btn, b_es, b_en)])
             center_window(popup, self)
             popup.deiconify()
             return
@@ -2363,8 +3343,8 @@ class Click2FoldersApp(tk.Tk):
             if current_mode == "medio_y_nombre" and not self.no_show_medio_tip:
                 self._show_tip_with_action(
                     "",
-                    "If no date is found in any of the 3 options\n(media created, capture date or name), the file will not be moved\nto any subfolder and will remain in the root folder." if eng else
-                    "Si no encuentra fecha en ninguna de las 3 opciones\n(medio creado, fecha de captura o nombre), el archivo no se moverá\na ninguna subcarpeta y quedará en la carpeta raíz.",
+                    "If the program does not find a date in any of the 3 options\n(media created, capture date or name), the file will not be moved\nto any subfolder and will remain in the root folder." if eng else
+                    "Si el programa no encuentra fecha en ninguna de las 3 opciones\n(medio creado, fecha de captura o nombre), el archivo no se moverá\na ninguna subcarpeta y quedará en la carpeta raíz.",
                     flag_attr="no_show_medio_tip", on_continue=callback)
             elif current_mode == "creacion" and not self.no_show_creacion_tip:
                 self._show_tip_with_action(
@@ -2391,26 +3371,29 @@ class Click2FoldersApp(tk.Tk):
 
     def _show_tip_with_action(self, title, text, flag_attr, on_continue):
         tip = tk.Toplevel(self)
+        tip.withdraw()
+        tip.configure(bg="#f0f4f8")
         eng = getattr(self, 'english_mode', False)
         tip.title("Notice" if eng else "Aviso")
         safe_icon(tip)
         tip.resizable(False, False)
         tip.transient(self)
         tip.grab_set()
-        frm = ttk.Frame(tip, padding=14)
-        frm.pack(fill="both", expand=True)
+        frm = ctk.CTkFrame(tip, fg_color="#e8eef5", corner_radius=12)
+        frm.pack(fill="both", expand=True, padx=15, pady=15)
         if title:
-            tk.Label(frm, text=title, font=("Segoe UI", 10, "bold", "underline"), justify="left").pack(anchor="w", pady=(0,10))
+            tk.Label(frm, text=title, font=("Segoe UI", 10, "bold", "underline"), justify="left", fg="#1e3a5f", bg="#f0f4f8").pack(anchor="w", pady=(0,10))
         for line in text.split('\n'):
             if line.strip():
-                tk.Label(frm, text=line, justify="left", font=("Segoe UI", 9)).pack(anchor="w", pady=(2,0))
+                tk.Label(frm, text=line, justify="left", font=("Segoe UI", 9), fg="#1e3a5f", bg="#f0f4f8").pack(anchor="w", pady=(2,0))
         # Solo mostrar checkbox "no volver a mostrar" si es un aviso de modo (no de reorganización)
         var = tk.BooleanVar(value=False)
         if not flag_attr.startswith("_dummy"):
-            ttk.Checkbutton(frm, text="Don't show again" if eng else "No volver a mostrar", variable=var).pack(anchor="w", pady=(10,10))
+            ctk.CTkCheckBox(frm, text="Don't show again" if eng else "No volver a mostrar", variable=var,
+                            fg_color="#3b82f6", hover_color="#1d4ed8", text_color="#1e3a5f").pack(anchor="w", pady=(10,10))
         else:
-            ttk.Frame(frm).pack(pady=5)
-        btns = ttk.Frame(frm)
+            tk.Frame(frm, bg="#f0f4f8").pack(pady=5)
+        btns = tk.Frame(frm, bg="#f0f4f8")
         btns.pack()
         def do_continue():
             if not flag_attr.startswith("_dummy"):
@@ -2421,8 +3404,10 @@ class Click2FoldersApp(tk.Tk):
         def do_cancel():
             tip.grab_release()
             tip.destroy()
-        ttk.Button(btns, text="Continue" if eng else "Continuar", command=do_continue).pack(side="left", padx=6)
-        ttk.Button(btns, text="Cancel" if eng else "Cancelar", command=do_cancel).pack(side="left", padx=6)
+        ctk.CTkButton(btns, text="Continue" if eng else "Continuar", command=do_continue,
+                      fg_color="#10b981", hover_color="#059669", text_color="white").pack(side="left", padx=6)
+        ctk.CTkButton(btns, text="Cancel" if eng else "Cancelar", command=do_cancel,
+                      fg_color="#64748b", hover_color="#475569", text_color="white").pack(side="left", padx=6)
         center_window(tip, self)
         tip.deiconify()
     def _undo_folder(self, folder):
@@ -2452,24 +3437,61 @@ class Click2FoldersApp(tk.Tk):
                 self.after(0, self._refresh_counters)
             self.timer_id = self.after(1000, constant_time_update)
         self.after(0, constant_time_update)
+        summary_data = []
         try:
             for folder in folders_to_process:
                 folder_norm = os.path.normcase(os.path.abspath(folder))
                 folder_basename = os.path.basename(folder)
-                self.after(0, lambda f=folder_basename: self.lbl_cf_name.config(text=f))
+                self.after(0, lambda f=folder_basename: self.lbl_cf_name.configure(text=f))
+                timestamp_start = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                self.after(0, lambda ts=timestamp_start, f=folder_basename, eng=getattr(self, 'english_mode', False): self._log(f"\n{'='*60}\n  {'Inicio:' if not eng else 'Start:'} {ts}  |  {f}\n{'='*60}"))
                 # Auto-undo si la carpeta tiene subcarpetas año/mes (organización previa)
                 if has_year_subdirs(folder):
                     self.after(0, lambda fn=folder_norm: self.tree.set(self.folder_indexes.get(fn, ""), "status", "Undoing..." if getattr(self, 'english_mode', False) else "Deshaciendo..."))
                     self.after(0, lambda f=folder_basename, e5=getattr(self, 'english_mode', False): self._log(f"{'Undoing previous organization in:' if e5 else 'Deshaciendo organización previa en:'} {f}"))
                     self._undo_folder(folder)
+                    self.created_dirs.clear()
                     self.after(0, lambda fn=folder_norm: self.tree.set(self.folder_indexes.get(fn, ""), "status", "Waiting" if getattr(self, 'english_mode', False) else "En espera"))
                     self.after(0, lambda e6=getattr(self, 'english_mode', False): self._log("Starting organization from scratch..." if e6 else "Iniciando organización desde cero..."))
                 self.after(0, lambda fn=folder_norm: self.tree.set(self.folder_indexes.get(fn, ""), "status", "Organizing..." if getattr(self, 'english_mode', False) else "Organizando..."))
-                self.after(0, lambda: self.progress.configure(value=0))
+                self.after(0, lambda: self.progress.set(0))
                 self.after(0, lambda f=folder_basename, e7=getattr(self, 'english_mode', False): self._log(f"{'Organizing folder:' if e7 else 'Organizando carpeta:'} {f}"))
                 self._organize_folder(folder)
-                self.after(0, lambda fn=folder_norm: self.tree.set(self.folder_indexes.get(fn, ""), "status", "Organized ✓" if getattr(self, 'english_mode', False) else "Organizado ✓"))
-                self.after(0, lambda: self.progress.configure(value=100))
+                self.after(0, lambda fn=folder_norm: self.tree.set(self.folder_indexes.get(fn, ""), "status", "Organized" if getattr(self, 'english_mode', False) else "Organizado"))
+                dirs_created = getattr(self, "_organize_dirs_created", 0)
+                no_date = getattr(self, "_organize_no_date_count", 0)
+                organized = getattr(self, "_organize_organized_count", 0)
+                summary_data.append({"name": folder_basename, "dirs": dirs_created, "no_date": no_date, "organized": organized})
+                def _update_cantidad_after_organize(f=folder, fn=folder_norm, dc=dirs_created, nd=no_date, oc=organized):
+                    try:
+                        e3 = getattr(self, 'english_mode', False)
+                        cant = f"{oc} {'archivos organizados' if not e3 else 'files organized'} / {nd} {'sin fecha' if not e3 else 'without date'}"
+                        self.tree.set(self.folder_indexes.get(fn, ""), "cantidad", cant)
+                    except Exception:
+                        pass
+                self.after(0, _update_cantidad_after_organize)
+                self.after(100, self._fit_folder)
+                no_date_count = getattr(self, "_organize_no_date_count", 0)
+                self.after(0, lambda n=no_date_count, eng=getattr(self, 'english_mode', False): self._log(
+                    f"{'='*60}\n  {'FILES WITHOUT DETECTED DATE:' if eng else 'ARCHIVOS SIN FECHA DETECTADA:'} {n}"))
+                timestamp_end = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                self.after(0, lambda ts=timestamp_end, f=folder_basename, eng=getattr(self, 'english_mode', False): self._log(f"{'='*60}\n  {'Fin:' if not eng else 'End:'} {ts}  |  {f}\n{'='*60}\n"))
+                self.after(0, lambda: self.progress.set(1.0))
+            # Resumen final
+            if summary_data:
+                eng_s = getattr(self, 'english_mode', False)
+                total_no_date = sum(d["no_date"] for d in summary_data)
+                total_dirs = sum(d["dirs"] for d in summary_data)
+                total_organized = sum(d["organized"] for d in summary_data)
+                lines = [f"{'='*60}"]
+                lines.append(f"  {'Total de archivos organizados:' if not eng_s else 'Total files organized:'} {total_organized}")
+                lines.append(f"  {'Total de archivos sin fecha detectable:' if not eng_s else 'Total files without date:'} {total_no_date}")
+                lines.append(f"  {'Total de carpetas creadas:' if not eng_s else 'Total folders created:'} {total_dirs}")
+                ts_final = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                lines.append(f"{'='*60}")
+                lines.append(f"  {'Fecha/hora final:' if not eng_s else 'Final date/time:'} {ts_final}")
+                lines.append(f"{'='*60}")
+                self.after_idle(lambda txt="\n".join(lines): self._log_summary(txt))
         finally:
             if WIN32_OK:
                 pythoncom.CoUninitialize()
@@ -2477,8 +3499,9 @@ class Click2FoldersApp(tk.Tk):
                 self.after_cancel(self.timer_id)
             self.after(0, self._refresh_counters)
             self.is_processing = False
-            self.after(0, lambda: self.status_label.config(text=""))
-            self.after(0, lambda: self.progress.config(value=0))
+            self.after(0, lambda: self.status_label.configure(text=""))
+            self.after(0, lambda: self.lbl_wait.configure(text=""))
+            self.after(0, lambda: self.progress.set(0))
             self.after(0, lambda: self._set_buttons_state(True))
             self.after(0, self._update_undo_button_state)
             self.after(0, self._show_completion_dialog)
@@ -2489,7 +3512,49 @@ class Click2FoldersApp(tk.Tk):
                 self.tree.set(iid, "sel", "☐")
     def _show_completion_dialog(self):
         self._uncheck_all()
-        messagebox.showinfo(APP_NAME, "Organization process completed." if getattr(self, 'english_mode', False) else "Proceso de organización finalizado.")
+        popup = tk.Toplevel(self)
+        popup.withdraw()
+        popup.configure(bg="#f0f4f8")
+        eng = getattr(self, 'english_mode', False)
+        popup.title(APP_NAME)
+        popup.resizable(False, False)
+        popup.transient(self)
+        safe_icon(popup)
+        frm = ctk.CTkFrame(popup, fg_color="#e8eef5", corner_radius=12)
+        frm.pack(fill="both", expand=True, padx=15, pady=15)
+        t_es = "Proceso de organización finalizado."
+        t_en = "Organization process completed."
+        lbl = tk.Label(frm, text=(t_en if eng else t_es),
+                     font=("Segoe UI", 12, "bold"), fg="#1e3a5f", justify="center", bg="#f0f4f8")
+        lbl.pack(pady=(10, 16))
+        ctk.CTkButton(frm, text="OK", command=popup.destroy,
+                      fg_color="#10b981", hover_color="#059669", text_color="white").pack()
+        self._register_live_popup(popup, APP_NAME, APP_NAME, [(lbl, t_es, t_en)])
+        center_window(popup, self)
+        popup.deiconify()
+
+    def _show_restored_popup(self):
+        popup = tk.Toplevel(self)
+        popup.withdraw()
+        popup.configure(bg="#f0f4f8")
+        eng = getattr(self, 'english_mode', False)
+        popup.title(APP_NAME)
+        popup.resizable(False, False)
+        popup.transient(self)
+        safe_icon(popup)
+        frm = ctk.CTkFrame(popup, fg_color="#e8eef5", corner_radius=12)
+        frm.pack(fill="both", expand=True, padx=15, pady=15)
+        t_es = "¡Todo ha sido restaurado exitosamente!"
+        t_en = "All folders have been restored successfully!"
+        lbl = tk.Label(frm, text=(t_en if eng else t_es),
+                     font=("Segoe UI", 12, "bold"), fg="#1e3a5f", justify="center", bg="#f0f4f8")
+        lbl.pack(pady=(10, 16))
+        ctk.CTkButton(frm, text="OK", command=popup.destroy,
+                      fg_color="#10b981", hover_color="#059669", text_color="white").pack()
+        self._register_live_popup(popup, APP_NAME, APP_NAME, [(lbl, t_es, t_en)])
+        center_window(popup, self)
+        popup.deiconify()
+
     def _get_target_date(self, path, fname, mode):
         cur_year = datetime.now().year
         ext = os.path.splitext(fname)[1].lower()
@@ -2620,14 +3685,18 @@ class Click2FoldersApp(tk.Tk):
         file_list = list(iter_all_files_including_organized(folder))
         total_files = len(file_list)
         self.processed_roots.add(folder)
-        self.after(0, lambda: self.progress.configure(value=0))
+        self.after(0, lambda: self.progress.set(0))
         processed = 0
+        self._organize_no_date_count = 0   # archivos sin fecha detectada en esta carpeta
+        self._organize_dirs_created = 0    # carpetas creadas en esta carpeta
+        self._organize_organized_count = 0 # archivos organizados en esta carpeta
         for path in file_list:
             processed += 1
             self.total_analyzed += 1
             fname = os.path.basename(path)
             dt = self._get_target_date(path, fname, mode)
             if not dt:
+                self._organize_no_date_count += 1
                 self.after(0, lambda n=fname, e8=getattr(self, 'english_mode', False): self._log(f"{'No date detected:' if e8 else 'Sin fecha detectada:'} {n} {'— skipped.' if e8 else '— se omite.'}"))
                 continue
             year_dir = os.path.join(folder, str(dt.year))
@@ -2637,20 +3706,27 @@ class Click2FoldersApp(tk.Tk):
             else:
                 month_dir = os.path.join(year_dir, f"{dt.month} {readable_month(dt.month, eng)}")
             os.makedirs(year_dir, exist_ok=True)
-            self.created_dirs.add(year_dir)
+            if year_dir not in self.created_dirs:
+                self.created_dirs.add(year_dir)
+                self.total_dirs_created += 1
+                self._organize_dirs_created += 1
             os.makedirs(month_dir, exist_ok=True)
             if month_dir not in self.created_dirs:
                 self.created_dirs.add(month_dir)
                 self.total_dirs_created += 1
+                self._organize_dirs_created += 1
             target = self._dedupe_name(os.path.join(month_dir, fname))
             self.moved_ops.append((target, path))
             shutil.move(path, target)
+            self._organize_organized_count += 1
+            self.total_organized += 1
             if processed % 50 == 0:
                 eng = getattr(self, 'english_mode', False)
-                self.after(0, lambda n=fname, y=dt.year, m=readable_month(dt.month, eng): self._log(f"Movido: {n} → {y}/{m}"))
+                self.after(0, lambda n=fname, y=dt.year, m=readable_month(dt.month, eng), e9=eng: self._log(
+                    f"{'Moved:' if e9 else 'Movido:'} {n} \u2192 {y}/{m}"))
             if processed % max(1, total_files // 20) == 0 or processed == total_files:
-                self.after(0, lambda v=int(processed/max(1,total_files)*100): self.progress.configure(value=v))
-        self.after(0, lambda: self.progress.configure(value=100))
+                self.after(0, lambda v=int(processed/max(1,total_files)*100): self.progress.set(v/100))
+        self.after(0, lambda: self.progress.set(1.0))
     def _dedupe_name(self, path):
         base, ext = os.path.splitext(path)
         i = 1
@@ -2660,6 +3736,11 @@ class Click2FoldersApp(tk.Tk):
         return path
 
     def on_undo(self):
+        eng_undo = getattr(self, 'english_mode', False)
+        if not self.queue:
+            self._show_modern_popup(("No hay carpetas cargadas para deshacer. Agrega una carpeta primero.",
+                                     "There are no folders loaded to undo. Add a folder first."))
+            return
         # Solo afectar carpetas marcadas con ☑
         checked_folders = []
         if hasattr(self, '_tree_checked'):
@@ -2667,32 +3748,45 @@ class Click2FoldersApp(tk.Tk):
                 if checked:
                     try:
                         folder = self.tree.item(iid)["values"][1]
-                        checked_folders.append(folder)
+                        if folder:
+                            checked_folders.append(folder)
                     except Exception:
                         pass
         if not checked_folders:
             # Ninguna marcada: mostrar aviso y no hacer nada
             popup = tk.Toplevel(self)
+            popup.withdraw()
+            popup.configure(bg="#f0f4f8")
             eng_undo = getattr(self, 'english_mode', False)
             popup.title("Selection required" if eng_undo else "Selección requerida")
             popup.resizable(False, False)
             popup.transient(self)
             popup.grab_set()
             safe_icon(popup)
-            frm = ttk.Frame(popup, padding=20)
-            frm.pack()
-            tk.Label(frm, text="First select the folders you want to undo by checking the checkbox (☑)." if eng_undo else "Primero selecciona las carpetas que deseas desorganizar marcando el checkbox (☑).",
-                     font=("Segoe UI", 10), justify="center", wraplength=280).pack(pady=(0, 16))
-            ttk.Button(frm, text="Got it" if eng_undo else "Entendido", command=popup.destroy).pack()
+            frm = ctk.CTkFrame(popup, fg_color="#e8eef5", corner_radius=12)
+            frm.pack(fill="both", expand=True, padx=15, pady=15)
+            t_es = "Primero selecciona las carpetas que deseas desorganizar marcando el checkbox (☑)."
+            t_en = "First select the folders you want to undo by checking the checkbox (☑)."
+            lbl = tk.Label(frm, text=(t_en if eng_undo else t_es),
+                     font=("Segoe UI", 10), justify="center", wraplength=280, fg="#1e3a5f", bg="#f0f4f8")
+            lbl.pack(pady=(0, 16))
+            b_es, b_en = "Entendido", "Got it"
+            btn = ctk.CTkButton(frm, text=(b_en if eng_undo else b_es), command=popup.destroy,
+                          fg_color="#3b82f6", hover_color="#2563eb", text_color="white")
+            btn.pack()
+            self._register_live_popup(popup, "Selección requerida", "Selection required",
+                                      [(lbl, t_es, t_en), (btn, b_es, b_en)])
             center_window(popup, self)
             popup.deiconify()
             return
         target_folders = checked_folders
         n = len(target_folders)
         names = "\n".join(f"  • {os.path.basename(f)}" for f in target_folders)
-        eng_undo2 = getattr(self, 'english_mode', False)
-        confirm = self._show_confirm_dialog(
-            msg=f"{'The organization of' if eng_undo2 else 'Se deshará la organización de'} {n} {'folder(s) will be undone:' if eng_undo2 else 'carpeta(s) seleccionada(s):'}\n{names}\n\n{'All files will be moved back to their root folder and empty folders will be removed.' if eng_undo2 else 'Todos los archivos se moverán a su carpeta raíz y se eliminarán las carpetas vacías.'}")
+        msg_undo_es = (f"Se deshará la organización de {n} carpeta(s) seleccionada(s):\n{names}\n\n"
+                       "Todos los archivos se moverán a su carpeta raíz y se eliminarán las carpetas vacías.")
+        msg_undo_en = (f"The organization of {n} folder(s) will be undone:\n{names}\n\n"
+                       "All files will be moved back to their root folder and empty folders will be removed.")
+        confirm = self._show_confirm_dialog(msg=(msg_undo_es, msg_undo_en))
         if confirm == "cancel":
             return
         self._set_buttons_state(False)
@@ -2702,7 +3796,7 @@ class Click2FoldersApp(tk.Tk):
         self.carpetas_procesadas_deshacer = 0
         self.total_carpetas_deshacer = len(target_folders)
         self.after(0, lambda: self._set_status("Undoing organization..." if getattr(self, 'english_mode', False) else "Deshaciendo organización..."))
-        self.after(0, lambda: self.progress.configure(value=0))
+        self.after(0, lambda: self.progress.set(0))
         threading.Thread(target=self._execute_undo_multiple_folders, args=(target_folders,), daemon=True).start()
 
     def _execute_undo_multiple_folders(self, folders_to_undo):
@@ -2719,20 +3813,23 @@ class Click2FoldersApp(tk.Tk):
             for i, folder in enumerate(folders_to_undo):
                 self.carpetas_procesadas_deshacer = i + 1
                 folder_norm = os.path.normcase(os.path.abspath(folder))
-                self.after(0, lambda f=os.path.basename(folder): self.lbl_cf_name.config(text=f))
+                self.after(0, lambda f=os.path.basename(folder): self.lbl_cf_name.configure(text=f))
                 self.after(0, lambda fn=folder_norm, e2=getattr(self, 'english_mode', False): self.tree.set(self.folder_indexes.get(fn, ""), "status", "Undoing..." if e2 else "Deshaciendo..."))
-                self.after(0, lambda: self.progress.configure(value=int((i+1) / total_folders * 80)))
+                self.after(0, lambda: self.progress.set(int((i+1) / total_folders * 80)/100))
                 self._undo_organization_for_folder(folder, show_message=False)
                 def _update_status_after_undo(f=folder, fn=folder_norm):
                     try:
-                        cnt = count_all_files_including_organized(f)
+                        fcount, fsub = count_folder_contents(f)
                         e3 = getattr(self, 'english_mode', False)
-                        self.tree.set(self.folder_indexes.get(fn, ""), "status", f"{cnt} {'files to organize' if e3 else 'archivos para organizar'}")
+                        cant = f"{fsub} {'carpetas' if not e3 else 'folders'} / {fcount} {'Archivos en total' if not e3 else 'Total files'}" if (fcount > 0 or fsub > 0) else ("Carpeta Vacía" if not e3 else "Empty Folder")
+                        self.tree.set(self.folder_indexes.get(fn, ""), "cantidad", cant)
+                        self.tree.set(self.folder_indexes.get(fn, ""), "status", "Sin organizar" if not e3 else "Unorganized")
                     except Exception:
                         e3 = getattr(self, 'english_mode', False)
-                        self.tree.set(self.folder_indexes.get(fn, ""), "status", "Unorganized" if e3 else "Desorganizada")
+                        self.tree.set(self.folder_indexes.get(fn, ""), "status", "Sin organizar" if not e3 else "Unorganized")
                 self.after(0, _update_status_after_undo)
-            self.after(0, lambda: self.progress.configure(value=90))
+                self.after(100, self._fit_folder)
+            self.after(0, lambda: self.progress.set(0.9))
             other_dirs_to_remove = list(self.created_dirs)
             other_dirs_to_remove.sort(key=lambda x: (len(x), x), reverse=True)
             other_dirs_removed = 0
@@ -2744,7 +3841,7 @@ class Click2FoldersApp(tk.Tk):
                         self.created_dirs.discard(d)
                         if (i+1) % 50 == 0 or i == len(other_dirs_to_remove) - 1:
                             progress = 90 + int((i+1) / max(1, len(other_dirs_to_remove)) * 10)
-                            self.after(0, lambda v=progress: self.progress.configure(value=v))
+                            self.after(0, lambda v=progress: self.progress.set(v/100))
                 except Exception:
                     pass
             self.moved_ops.clear()
@@ -2756,14 +3853,15 @@ class Click2FoldersApp(tk.Tk):
             if hasattr(self, 'timer_id'):
                 self.after_cancel(self.timer_id)
             self.after(0, self._refresh_counters)
-            self.after(0, lambda: self.progress.configure(value=100))
+            self.after(0, lambda: self.progress.set(1.0))
             self.is_processing = False
-            self.after(0, lambda: self.status_label.config(text=""))
-            self.after(0, lambda: self.progress.config(value=0))
+            self.after(0, lambda: self.status_label.configure(text=""))
+            self.after(0, lambda: self.lbl_wait.configure(text=""))
+            self.after(0, lambda: self.progress.set(0))
             self.after(0, lambda: self._set_buttons_state(True))
             self.after(0, self._update_undo_button_state)
             self.after(0, self._uncheck_all)
-            self.after(0, lambda: messagebox.showinfo(APP_NAME, "All folders have been restored successfully!" if getattr(self, 'english_mode', False) else "¡Todo ha sido restaurado exitosamente!"))
+            self.after(0, self._show_restored_popup)
 
     def _execute_undo(self, ops_to_undo):
         def constant_time_update_undo():
@@ -2776,9 +3874,10 @@ class Click2FoldersApp(tk.Tk):
         self.after(0, constant_time_update_undo)
         self.is_processing = True
         self.after(0, lambda: self._set_status("Please wait" if getattr(self, 'english_mode', False) else "Por favor espere"))
-        self.after(0, lambda: self.progress.configure(value=0))
+        self.after(0, lambda: self.progress.set(0))
         try:
-            self.after(0, lambda: self._log("Restaurando archivos..."))
+            eng_r = getattr(self, 'english_mode', False)
+            self.after(0, lambda e10=eng_r: self._log("Restoring files..." if e10 else "Restaurando archivos..."))
             for i, (new_path, old_path) in enumerate(reversed(ops_to_undo)):
                 try:
                     if os.path.exists(new_path):
@@ -2786,13 +3885,15 @@ class Click2FoldersApp(tk.Tk):
                         shutil.move(new_path, old_path)
                         if (i+1) % 50 == 0 or i == len(ops_to_undo) - 1:
                             progress = int((i+1) / max(1, len(ops_to_undo)) * 60)
-                            self.after(0, lambda v=progress: self.progress.configure(value=v))
+                            self.after(0, lambda v=progress: self.progress.set(v/100))
                 except Exception as e:
-                    self.after(0, lambda n=os.path.basename(new_path), err=e: self._log(f"Error restaurando {n}: {err}"))
-            self.after(0, lambda: self._log(f"Restauración de {len(ops_to_undo)} archivos completada."))
+                    self.after(0, lambda n=os.path.basename(new_path), err=e, e11=getattr(self, 'english_mode', False): self._log(
+                        f"{'Error restoring' if e11 else 'Error restaurando'} {n}: {err}"))
+            self.after(0, lambda n=len(ops_to_undo), e12=getattr(self, 'english_mode', False): self._log(
+                f"{'Restoration of' if e12 else 'Restauración de'} {n} {'files completed.' if e12 else 'archivos completada.'}"))
 
-            self.after(0, lambda: self.progress.configure(value=70))
-            self.after(0, lambda: self.progress.configure(value=80))
+            self.after(0, lambda: self.progress.set(0.7))
+            self.after(0, lambda: self.progress.set(0.8))
             other_dirs_to_remove = list(self.created_dirs)
             other_dirs_to_remove.sort(key=lambda x: (len(x), x), reverse=True)
             other_dirs_removed = 0
@@ -2804,60 +3905,120 @@ class Click2FoldersApp(tk.Tk):
                         self.created_dirs.discard(d)
                         if (i+1) % 50 == 0 or i == len(other_dirs_to_remove) - 1:
                             progress = 80 + int((i+1) / max(1, len(other_dirs_to_remove)) * 20)
-                            self.after(0, lambda v=progress: self.progress.configure(value=v))
+                            self.after(0, lambda v=progress: self.progress.set(v/100))
                 except Exception:
                     pass
             self.moved_ops.clear()
             self.processed_roots.clear()
             self.created_dirs.clear()
             for f in self.queue:
-                self.after(0, lambda root=f, e4=getattr(self, 'english_mode', False): self.tree.set(self.folder_indexes.get(root, ""), "status", "Undone" if e4 else "Deshecho"))
+                self.after(0, lambda root=f, e4=getattr(self, 'english_mode', False): self.tree.set(self.folder_indexes.get(root, ""), "status", "Sin organizar" if not e4 else "Unorganized"))
         finally:
             if hasattr(self, 'timer_id_undo'):
                 self.after_cancel(self.timer_id_undo)
             self.after(0, self._refresh_counters)
-            self.after(0, lambda: self.progress.configure(value=100))
+            self.after(0, lambda: self.progress.set(1.0))
             self.is_processing = False
-            self.after(0, lambda: self.status_label.config(text=""))
-            self.after(0, lambda: self.progress.config(value=0))
+            self.after(0, lambda: self.status_label.configure(text=""))
+            self.after(0, lambda: self.lbl_wait.configure(text=""))
+            self.after(0, lambda: self.progress.set(0))
             self.after(0, lambda: self._set_buttons_state(True))
             self.after(0, self._update_undo_button_state)
             self.after(0, self._uncheck_all)
-            self.after(0, lambda: messagebox.showinfo(APP_NAME, "All folders have been restored successfully!" if getattr(self, 'english_mode', False) else "¡Todo ha sido restaurado exitosamente!"))
+            self.after(0, self._show_restored_popup)
 
     def _show_confirm_dialog(self, msg=None):
         popup = tk.Toplevel(self)
+        popup.withdraw()
+        popup.configure(bg="#f0f4f8")
         popup.title("Confirm undo" if getattr(self, 'english_mode', False) else "Confirmar deshacer")
         popup.resizable(False, False)
         popup.transient(self)
         popup.grab_set()
         safe_icon(popup)
         eng = getattr(self, 'english_mode', False)
-        frm = ttk.Frame(popup, padding=16)
-        frm.pack()
+        frm = ctk.CTkFrame(popup, fg_color="#e8eef5", corner_radius=12)
+        frm.pack(fill="both", expand=True, padx=15, pady=15)
         if msg is None:
-            msg = ("All files in subfolders will be moved back\nto their root folder and empty folders will be removed.\n\n"
-                   "This will let you reorganize them with another mode." if eng else
-                   "Se moverán todos los archivos de las subcarpetas de vuelta "
+            msg = ("Se moverán todos los archivos de las subcarpetas de vuelta "
                    "a su carpeta raíz y se eliminarán las carpetas vacías.\n\n"
-                   "Esto te permitirá reorganizarlas con otro modo de organización.")
-        tk.Label(frm, text=msg, font=("Segoe UI", 10), justify="center",
-                 wraplength=380).pack(pady=(10, 20))
+                   "Esto te permitirá reorganizarlas con otro modo de organización.",
+                   "All files in subfolders will be moved back\nto their root folder and empty folders will be removed.\n\n"
+                   "This will let you reorganize them with another mode.")
+        if isinstance(msg, tuple):
+            msg_es, msg_en = msg
+        else:
+            msg_es = msg_en = msg
+        lbl = tk.Label(frm, text=(msg_en if eng else msg_es), font=("Segoe UI", 10), justify="center",
+                     wraplength=380, fg="#1e3a5f", bg="#f0f4f8")
+        lbl.pack(pady=(10, 20))
         result = tk.StringVar(value="cancel")
 
         def cont():
             result.set("undo")
             popup.destroy()
 
-        btns = ttk.Frame(frm)
+        btns = tk.Frame(frm, bg="#f0f4f8")
         btns.pack()
-        ttk.Button(btns, text="Continue" if eng else "Continuar", command=cont).pack(side="left", padx=6)
-        ttk.Button(btns, text="Cancel" if eng else "Cancelar", command=popup.destroy).pack(side="left", padx=6)
+        c_es, c_en = "Continuar", "Continue"
+        x_es, x_en = "Cancelar", "Cancel"
+        btn_cont = ctk.CTkButton(btns, text=(c_en if eng else c_es), command=cont,
+                      fg_color="#10b981", hover_color="#059669", text_color="white")
+        btn_cont.pack(side="left", padx=6)
+        btn_cancel = ctk.CTkButton(btns, text=(x_en if eng else x_es), command=popup.destroy,
+                      fg_color="#ef4444", hover_color="#dc2626", text_color="white")
+        btn_cancel.pack(side="left", padx=6)
+        self._register_live_popup(popup, "Confirmar deshacer", "Confirm undo",
+                                  [(lbl, msg_es, msg_en), (btn_cont, c_es, c_en), (btn_cancel, x_es, x_en)])
         center_window(popup, self)
+        popup.deiconify()
         self.wait_window(popup)
         return result.get()
 
+    def _confirm_close(self):
+        """Pregunta antes de cerrar el programa para evitar cierres accidentales."""
+        popup = tk.Toplevel(self)
+        popup.withdraw()
+        popup.configure(bg="#f0f4f8")
+        eng = getattr(self, 'english_mode', False)
+        popup.title("Confirmar cierre" if not eng else "Confirm close")
+        popup.resizable(False, False)
+        popup.transient(self)
+        popup.grab_set()
+        safe_icon(popup)
+        frm = ctk.CTkFrame(popup, fg_color="#e8eef5", corner_radius=12)
+        frm.pack(fill="both", expand=True, padx=15, pady=15)
+        t_es = "¿Deseas cerrar el programa?"
+        t_en = "Do you want to close the program?"
+        lbl = tk.Label(frm, text=(t_en if eng else t_es), font=("Segoe UI", 11, "bold"),
+                       justify="center", wraplength=320, fg="#1e3a5f", bg="#f0f4f8")
+        lbl.pack(pady=(14, 18))
+        result = tk.StringVar(value="no")
+
+        def yes():
+            result.set("yes")
+            popup.destroy()
+
+        btns = tk.Frame(frm, bg="#f0f4f8")
+        btns.pack()
+        s_es, s_en = "Sí, cerrar", "Yes, close"
+        c_es, c_en = "Cancelar", "Cancel"
+        btn_yes = ctk.CTkButton(btns, text=(s_en if eng else s_es), command=yes,
+                                fg_color="#ef4444", hover_color="#dc2626", text_color="white")
+        btn_yes.pack(side="left", padx=6)
+        btn_no = ctk.CTkButton(btns, text=(c_en if eng else c_es), command=popup.destroy,
+                               fg_color="#64748b", hover_color="#475569", text_color="white")
+        btn_no.pack(side="left", padx=6)
+        self._register_live_popup(popup, "Confirmar cierre", "Confirm close",
+                                  [(lbl, t_es, t_en), (btn_yes, s_es, s_en), (btn_no, c_es, c_en)])
+        center_window(popup, self)
+        popup.deiconify()
+        self.wait_window(popup)
+        return result.get() == "yes"
+
     def on_close(self):
+        if not self._confirm_close():
+            return
         self._close_aux_windows()
         self._close_overlay()
         self.destroy()
@@ -2902,5 +4063,9 @@ if __name__ == '__main__':
         sys.exit(1)
     if not WIN32_OK and sys.platform == 'win32':
         messagebox.showwarning("Advertencia", "Falta la librería 'pywin32'. Instálala con 'pip install pywin32'. Las opciones de ordenamiento por 'Medio creado/Fecha de captura' no funcionarán.")
-    app = Click2FoldersApp()
-    app.mainloop()
+    try:
+        app = Click2FoldersApp()
+        app.mainloop()
+    except Exception as e:
+        import traceback
+        messagebox.showerror("Error", f"Error al iniciar:\n{traceback.format_exc()}")

@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1,0,0,0),
-    prodvers=(1,0,0,0),
+    filevers=(1, 10, 40, 0),
+    prodvers=(1, 10, 40, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -13,16 +13,16 @@ VSVersionInfo(
     StringFileInfo(
       [
       StringTable(
-        u'040904B0',
-        [StringStruct(u'CompanyName', u'German Vargas'),
-        StringStruct(u'FileDescription', u'Click2Folders - Organizador de fotos y videos'),
-        StringStruct(u'FileVersion', u'1.0.0.0'),
-        StringStruct(u'InternalName', u'click2folders'),
-        StringStruct(u'LegalCopyright', u'© 2025 German Vargas. Todos los derechos reservados.'),
-        StringStruct(u'OriginalFilename', u'click2folders.exe'),
-        StringStruct(u'ProductName', u'Click2Folders'),
-        StringStruct(u'ProductVersion', u'1.0.0.0')])
-      ]), 
-    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
+        '040904B0',
+        [StringStruct('CompanyName', 'German Vargas'),
+        StringStruct('FileDescription', 'Click2Folders - Chronological Photo and Video Organizer'),
+        StringStruct('FileVersion', '1.10.40.0'),
+        StringStruct('InternalName', 'click2folders'),
+        StringStruct('LegalCopyright', '(c) 2026 German Vargas'),
+        StringStruct('OriginalFilename', 'click2folders.exe'),
+        StringStruct('ProductName', 'Click2Folders'),
+        StringStruct('ProductVersion', '1.10.40.0')])
+      ]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]
 )

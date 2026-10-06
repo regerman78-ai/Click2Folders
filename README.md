@@ -10,10 +10,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v1.10.14-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-v1.10.40-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/python-3.13+-green" alt="Python"/>
   <img src="https://img.shields.io/badge/platform-Windows-lightgrey" alt="Windows"/>
-  <img src="https://img.shields.io/badge/VirusTotal-0%2F68-brightgreen" alt="VirusTotal"/>
+  <img src="https://img.shields.io/badge/VirusTotal-0%2F69-brightgreen" alt="VirusTotal"/>
   <img src="https://img.shields.io/badge/license-MIT-brightgreen" alt="License"/>
 </p>
 
@@ -32,9 +32,19 @@ Click2Folders detects the dates of your photos and videos to create year folders
   <img src="screenshots/Antes.jpg" alt="Antes de organizar" width="700"/>
 </p>
 
+### Organizado por Años / Organized by Years
+<p align="center">
+  <img src="screenshots/Organized%20for%20Years.jpg" alt="Carpetas organizadas por año" width="500"/>
+</p>
+
 ### Después / After
 <p align="center">
   <img src="screenshots/Despues.jpg" alt="Después de organizar" width="700"/>
+</p>
+
+### Organización por Mes (Inglés) / Organization by Month (English)
+<p align="center">
+  <img src="screenshots/Organize%20into%20subfolders%20by%20month%20in%20English.jpg" alt="Organized into subfolders by month in English" width="300"/>
 </p>
 
 ### Instalación - SmartScreen / Installation - SmartScreen
@@ -92,13 +102,21 @@ Click2Folders detects the dates of your photos and videos to create year folders
 - **Auto-check de actualizaciones** desde GitHub
 - **Sin conexión a internet** - todo funciona localmente
 - **No borra tus archivos** - solo los organiza
-- **0/68 falsos positivos en VirusTotal** - seguro y limpio
+- **0/69 falsos positivos en VirusTotal** - seguro y limpio
 
 ## Seguridad / Security
 
-El instalador de Click2Folders ha sido analizado en **VirusTotal** con resultado de **0 detecciones de 68 antivirus**. Esto garantiza que el programa es seguro para su uso.
+El instalador de Click2Folders ha sido analizado en **VirusTotal** con resultado de **0 detecciones de 69 antivirus**. Esto garantiza que el programa es seguro para su uso.
 
-The Click2Folders installer has been analyzed on **VirusTotal** with a result of **0 detections out of 68 antivirus engines**. This ensures the program is safe to use.
+The Click2Folders installer has been analyzed on **VirusTotal** with a result of **0 detections out of 69 antivirus engines**. This ensures the program is safe to use.
+
+## Privacidad / Privacy
+
+Click2Folders **no recopila datos de usuarios**: todo funciona localmente en tu PC.
+
+Política completa: [PRIVACY.md](PRIVACY.md)
+
+Click2Folders **collects no user data**: everything runs locally on your PC. Full policy: [PRIVACY.md](PRIVACY.md).
 
 ## Descarga / Download
 

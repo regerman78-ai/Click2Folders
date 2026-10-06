@@ -4,7 +4,7 @@
 #define MyAppName "Click2Folders"
 #define MyAppVersion "1.1"
 #define MyAppPublisher "German Vargas"
-#define MyAppURL "http://www.click2folders.com/"
+#define MyAppURL "https://github.com/regerman78-ai/Click2Folders"
 #define MyAppExeName "click2folders.exe"
 
 [Setup]
