@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v1.10.40-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-v1.10.42-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/python-3.13+-green" alt="Python"/>
   <img src="https://img.shields.io/badge/platform-Windows-lightgrey" alt="Windows"/>
   <img src="https://img.shields.io/badge/VirusTotal-0%2F69-brightgreen" alt="VirusTotal"/>

@@ -1,7 +1,7 @@
 # -- coding: utf-8 --
 """
 Click2Folders - Organizador automático de fotos y videos
-Versión: v1.10.40
+Versión: v1.10.42
 """
 import os
 import re
@@ -27,7 +27,7 @@ ctk.set_default_color_theme("blue")
 
 # Variables de la aplicación
 APP_NAME = "Click2Folders"
-APP_VERSION = "v1.10.40"
+APP_VERSION = "v1.10.42"
 GITHUB_REPO = "regerman78-ai/Click2Folders"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 GITHUB_RELEASES_URL = f"{GITHUB_URL}/releases"
@@ -2048,15 +2048,25 @@ class Click2FoldersApp(tk.Tk):
         self.txt = tk.Text(txt_frame, height=10, state="disabled", bg="#ffffff", fg="#1e3a5f",
                           font=("Consolas", 10), relief="flat", borderwidth=0, highlightthickness=0)
         scroll = ctk.CTkScrollbar(txt_frame, command=self.txt.yview, fg_color="#cbd5e1", button_color="#94a3b8")
-        self.txt.configure(yscrollcommand=scroll.set)
+        self._log_scroll = scroll
+        self.txt.configure(yscrollcommand=self._on_log_scroll)
         scroll.pack(side="right", fill="y", padx=(2, 5), pady=5)
         self.txt.pack(side="left", fill="both", expand=True, padx=5, pady=5)
         self.txt.bind("<Configure>", self._on_log_configure)
+
+    def _on_log_scroll(self, first, last):
+        try:
+            self._log_scroll.set(first, last)
+            if not getattr(self, "_log_resizing", False):
+                self._log_at_end = float(last) >= 0.999
+        except Exception:
+            pass
 
     def _on_log_configure(self, event=None):
         try:
             if event is not None and event.widget is not self.txt:
                 return
+            self._log_resizing = True
             if getattr(self, "_log_realign_id", None):
                 try:
                     self.after_cancel(self._log_realign_id)
@@ -2069,10 +2079,12 @@ class Click2FoldersApp(tk.Tk):
     def _realign_log_view(self):
         self._log_realign_id = None
         try:
-            if self.txt.yview()[1] >= 0.999:
+            if getattr(self, "_log_at_end", True):
                 self.txt.yview_moveto(1.0)
         except Exception:
             pass
+        finally:
+            self._log_resizing = False
 
     def _build_counters_bar(self):
         bar = tk.Frame(self, bg="#1e3a5f")
@@ -2508,7 +2520,7 @@ class Click2FoldersApp(tk.Tk):
         self.tutorial_win.win = w
     def _action_icon(self, parent, glyph, cmd):
         return ctk.CTkButton(parent, text=glyph, width=34, height=28, corner_radius=8,
-                             fg_color="white", hover_color="#f1f5f9", border_width=1,
+                             fg_color="white", hover_color="#f1f5f9", border_width=2,
                              border_color="#cbd5e1", text_color="#475569",
                              font=("Segoe UI", 15), command=cmd)
 

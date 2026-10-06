@@ -975,3 +975,58 @@
 - dist\Click2Folders-Portable-v1.10.40.exe - SHA256 6A2575D9893149DF09095348E0E901B5AB4D4EF5DB867128800DD988C49A7EDD
 - installer\Click2Folders-Instalador-v1.10.40.exe - SHA256 CA618943910886A14151A9A84F5A9910945D240523C1DAE1C5452FF2B73C1B93
 - Backup Claude/v1.10.40/ - .py + spec + iss + NOTAS_SESION + portable + instalador + README + PRIVACY + version_info
+
+---
+
+## v1.10.41 - 06/10/2026 - El log vuelve bien al reducir la ventana (bandera at_end) + aclaración de screenshots en GitHub
+
+### Contexto
+- El usuario confirmó: inicio ✓ y maximizar ✓, pero **al volver a tamaño original el log se veía mal**. Causa: el realign solo corrige si `yview()[1] >= 0.999` DESPUÉS del resize; al reducir Tk dejaba la vista sin anclar al final (fracción <0.999) → el guard no disparaba y la vista quedaba a mitad del log
+- Screenshots: verificado con fetch de `raw.githubusercontent.com/.../README.md` que GitHub **ya sirve** badge v1.10.41→ v1.10.40, orden nuevo (Antes → Organized for Years → Después → month in English) y todas las imágenes (carpeta == HEAD == push `b2b9e38`, `git status screenshots` limpio) → el usuario ve **caché del navegador** (Ctrl+F5)
+
+### Cambios
+1. **Bandera `_log_at_end`**: `yscrollcommand` ahora va por `_on_log_scroll` (guarda la barra + registra `last >= 0.999` como "estaba al final"), pero **ignora los eventos durante el resize** (`_log_resizing`), para no perder el estado pre-resize
+2. **`_on_log_configure`** marca `_log_resizing = True` al inicio y lo limpia `_realign_log_view` en `finally`
+3. **`_realign_log_view`**: si la bandera dice que estaba al final → `yview_moveto(1.0)` (garantiza ancla al final tras cualquier resize); si el usuario había scrolleado para leer → no toca la posición
+4. **Bump v1.10.41**: py ×2, installer.iss ×3, README badge, version_info.txt → 1.10.41.0
+
+### Verificación
+- py_compile OK
+- Test 17/17 PASS: ciclo NORMAL → ZOOMED → RESTAURAR (vista al final + pie `====` completo + tope en tramo final en los 3 estados, ARCHIVOS completo en MAX, sin `====` consecutivos, sin línea vacía final) + posición de lectura al 50% NO se fuerza al final en resize + btn_lang bloqueado/liberado
+- EnumWindows runtime: "Click2Folders - ... v1.10.41" PASS
+- ISCC OK (7.281 sec)
+
+### Archivos
+- click2folders.py - v1.10.41
+- installer.iss - v1.10.41 / version_info.txt - 1.10.41.0 / README badge v1.10.41
+- dist\Click2Folders-Portable-v1.10.41.exe - SHA256 FA44DD66BF930B8BDB771D12FC35A195373FE9048B8DB64C41CFD79E8D7FF9C3
+- installer\Click2Folders-Instalador-v1.10.41.exe - SHA256 614E78403BA50BE56FE3F1412324E888577E86D85F67D5CA41535A841E799859
+- Backup Claude/v1.10.41/ - .py + spec + iss + NOTAS_SESION + portable + instalador + README + PRIVACY + version_info
+
+---
+
+## v1.10.42 - 06/10/2026 - Glifos con borde 2px + GitHub: unificación de ramas main/master (causa raíz de "imágenes desactualizadas")
+
+### Contexto
+- Usuario: "pon el borde de los glifos igual que el ancho del borde de cada item (PayPal/Nequi/USDT)" → glifos ↗/⧉ tenían `border_width=1` y los items `border_width=2`
+- Usuario: "actualicé la página de GitHub y siguen sin actualizarse las imágenes" — el README crudo en `raw.githubusercontent.com` ya servía el contenido nuevo → **causa raíz distinta**: el repo tenía DOS ramas divergentes; el sitio servía **`main`** (rama por defecto, OID `a887202`, solo 4 archivos: .gitignore, Logo Final.png, README.md, screenshots — README VIEJO sin "Organizado por Años"), mientras todos los pushes iban a **`master`** (comits paralelos con los mismos mensajes pero SHAs distintos, línea reescrita en algún momento)
+
+### Cambios
+1. **`_action_icon`**: `border_width=1` → `border_width=2` (mismo ancho que los items `paypal_outer`/`nequi_outer`/`tether_outer` en líneas 2632/2655/2688)
+2. **Unificación de ramas** (sin force, sin pérdida): `git merge origin/main --allow-unrelated-histories -X ours` → gana nuestro README (orden nuevo + badge), suma a `master` los archivos que solo vivían en `main`: **`Logo Final.png`** (el logo del README estaba roto en master) y `screenshots/main-window.jpg`
+3. **Push**: `master` → `8bf409a`; luego `git push origin master:main` (fast-forward `a887202..8bf409a`) → ambas ramas en `8bf409a`
+4. **Bump v1.10.42**: py ×2, installer.iss ×3, README badge, version_info.txt → 1.10.42.0
+
+### Verificación
+- py_compile OK
+- Test 7/7 PASS (mainloop+after): título v1.10.42, 3 glifos en diálogo de donaciones con `border_width=2`, 3 items con `border_width=2`, glifo == item, 1 glifo en Support con `border_width=2`
+- EnumWindows runtime: "Click2Folders - ... v1.10.42" PASS
+- ISCC OK (8.891 sec)
+- Web de GitHub verificada por fetch: OID servido `8bf409a`, contiene "Organizado por Años", badge v1.10.40, Logo Final presente
+
+### Archivos
+- click2folders.py - v1.10.42 (glifos border_width=2)
+- installer.iss - v1.10.42 / version_info.txt - 1.10.42.0 / README badge v1.10.42
+- dist\Click2Folders-Portable-v1.10.42.exe - SHA256 4FF5973BE74112A10A2AA463D848D2432CD7BA47C8F4550CDF669C8BCD16C820
+- installer\Click2Folders-Instalador-v1.10.42.exe - SHA256 186625D73B494873870337DA1796D1D8A30BF7CDD5C2F58AA0BCCBA681113424
+- Backup Claude/v1.10.42/ - .py + spec + iss + NOTAS_SESION + portable + instalador + README + PRIVACY + version_info
