@@ -1,7 +1,7 @@
 # -- coding: utf-8 --
 """
 Click2Folders - Organizador automático de fotos y videos
-Versión: v1.10.42
+Versión: v1.10.44
 """
 import os
 import re
@@ -27,7 +27,7 @@ ctk.set_default_color_theme("blue")
 
 # Variables de la aplicación
 APP_NAME = "Click2Folders"
-APP_VERSION = "v1.10.42"
+APP_VERSION = "v1.10.44"
 GITHUB_REPO = "regerman78-ai/Click2Folders"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 GITHUB_RELEASES_URL = f"{GITHUB_URL}/releases"
@@ -2251,6 +2251,7 @@ class Click2FoldersApp(tk.Tk):
                     ("• Translate to English / Traducir al Español:", True),
                     ("   Changes the interface language, tutorial and sets month", False),
                     ("   subfolder names to English when organizing: (1 January, 2 February, etc...).", False),
+                    ("   To create the folders in English, just set the program to English and click Organize.", False),
                     ("• Update / Actualización:", True),
                     ("   Opens the GitHub page to download the latest version of the program.", False),
                     ("   The program also automatically checks for updates when it starts.", False),
@@ -2355,6 +2356,7 @@ class Click2FoldersApp(tk.Tk):
                     ("• Traducir al Español / Translate to English:", True),
                     ("   Cambia el idioma de la interfaz, el tutorial y al organizar las carpetas pone los nombres de", False),
                     ("   las subcarpetas por mes en ingles: (1 January, 2 February, etc...).", False),
+                    ("   Para crear las carpetas en inglés solo pon el programa en inglés y da click en Organizar.", False),
                     ("• Actualización / Update:", True),
                     ("   Abre la página de GitHub para descargar la última versión del programa.", False),
                     ("   El programa también verifica actualizaciones automáticamente al iniciar.", False),

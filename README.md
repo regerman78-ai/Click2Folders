@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v1.10.42-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-v1.10.44-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/python-3.13+-green" alt="Python"/>
   <img src="https://img.shields.io/badge/platform-Windows-lightgrey" alt="Windows"/>
   <img src="https://img.shields.io/badge/VirusTotal-0%2F69-brightgreen" alt="VirusTotal"/>
@@ -27,25 +27,29 @@ Click2Folders detects the dates of your photos and videos to create year folders
 
 ## Capturas / Screenshots
 
-### Antes / Before
+### 877 archivos desordenados
 <p align="center">
   <img src="screenshots/Antes.jpg" alt="Antes de organizar" width="700"/>
 </p>
 
-### Organizado por Años / Organized by Years
+### Ahora queda organizado por Años / Organized by Years
 <p align="center">
   <img src="screenshots/Organized%20for%20Years.jpg" alt="Carpetas organizadas por año" width="500"/>
 </p>
 
-### Después / After
+### ¡Y subcarpetas por mes! / And month subfolders!
 <p align="center">
   <img src="screenshots/Despues.jpg" alt="Después de organizar" width="700"/>
 </p>
 
-### Organización por Mes (Inglés) / Organization by Month (English)
+### Incluso puedes poner las subcarpetas en inglés / You can even have the subfolders in English
 <p align="center">
   <img src="screenshots/Organize%20into%20subfolders%20by%20month%20in%20English.jpg" alt="Organized into subfolders by month in English" width="300"/>
 </p>
+
+También puedes crear las subcarpetas en inglés: pon el programa en inglés y haz clic en "Organizar".
+
+You can also create the subfolders in English: put the program in English and click "Organize".
 
 ### Instalación - SmartScreen / Installation - SmartScreen
 <p align="center">
@@ -89,10 +93,11 @@ Click2Folders detects the dates of your photos and videos to create year folders
 ## Características / Features
 
 - **4 modos de organización:**
-  1. Por Fecha de Captura, Medio Creado o Nombre
-  2. Por Fecha en el Nombre del archivo
-  3. Por Fecha de Creación
-  4. Por Fecha de Modificación
+
+1. Por Fecha de Captura, Medio Creado o Nombre
+2. Por Fecha en el Nombre del archivo
+3. Por Fecha de Creación
+4. Por Fecha de Modificación
 
 - **Interfaz intuitiva** con diseño moderno
 - **Soporte completo** de imágenes (JPEG, PNG, GIF, RAW, etc.) y videos (MP4, AVI, MOV, MKV, etc.)
@@ -153,7 +158,7 @@ Correo de contacto: **click2folders@gmail.com**
 
 ## ¿Cómo usarlo? / How to use?
 
-1. Descarga el instalador desde [Releases](https://github.com/regerman78-ai/Click2Folders/releases)
+1. Descarga el instalador o la versión portable desde [Releases](https://github.com/regerman78-ai/Click2Folders/releases)
 2. Instala Click2Folders
 3. Agrega la carpeta o carpetas que quieras organizar
 4. Elige el modo de organización

@@ -1030,3 +1030,65 @@
 - dist\Click2Folders-Portable-v1.10.42.exe - SHA256 4FF5973BE74112A10A2AA463D848D2432CD7BA47C8F4550CDF669C8BCD16C820
 - installer\Click2Folders-Instalador-v1.10.42.exe - SHA256 186625D73B494873870337DA1796D1D8A30BF7CDD5C2F58AA0BCCBA681113424
 - Backup Claude/v1.10.42/ - .py + spec + iss + NOTAS_SESION + portable + instalador + README + PRIVACY + version_info
+
+---
+
+## v1.10.43 - 06/10/2026 - README: títulos bilingües ES/EN reordenados + modos con números normales + tutorial interno explica carpetas en inglés
+
+### Contexto
+- Usuario revisó el README en GitHub (ya servía el contenido nuevo tras unificar ramas) y pidió 5 ajustes de texto/estructura, más aclarar en el tutorial cómo crear carpetas en inglés
+
+### Cambios README
+1. **Título de la imagen de años**: `### Organizado por Años / Organized by Years` → `### Después / Organizado por Años / Organized by Years` (texto exacto elegido por el usuario)
+2. **Siguiente captura (mes ES)**: `### Después / After` → `### Organizado en Subcarpetas por mes / Organized in Subfolders by Month`
+3. **Captura en inglés**: `### Organización por Mes (Inglés) / Organization by Month (English)` → `### Organizado en Subcarpetas por mes (Inglés) / Organized in Subfolders by Month (English)` + párrafo nuevo: "También puedes crear las subcarpetas en inglés: pon el programa en inglés y haz clic en "Organizar"." + traducción EN
+4. **Modos con números normales**: la lista `1.`–`4.` estaba ANIDADA dentro de la viñeta `- **4 modos de organización:**` → GitHub renderiza `<ol>` anidado con números **romanos** (i., ii., iii., iv.). Desanidada al margen → `<ol>` de primer nivel → 1, 2, 3, 4 normales (verificado: nunca hubo romanos en el historial de git; el HTML en vivo sí tiene `<ol>` anidado = CSS de GitHub)
+5. **Paso 1 de "¿Cómo usarlo?"**: "Descarga el instalador desde Releases" → "Descarga el instalador o la versión portable desde Releases"
+
+### Cambios app (tutorial interno `on_tutorial`)
+6. **ES** (sección "🔘 Botones principales" → "Traducir al Español"): línea nueva "Para crear las carpetas en inglés solo pon el programa en inglés y da click en Organizar."
+7. **EN** (misma sección): "To create the folders in English, just set the program to English and click Organize."
+8. **Bump v1.10.43**: py ×2, installer.iss ×3, README badge, version_info.txt → 1.10.43.0
+
+### Verificación
+- py_compile OK
+- Test 8/8 PASS (mainloop+after): título v1.10.43 + README (4 títulos/pasos/estructura desanidada) + tutorial ES con nota + tutorial EN con nota
+- EnumWindows runtime: "Click2Folders - ... v1.10.43" PASS
+- ISCC OK (8.078 sec)
+
+### Nota
+- La captura `screenshots/tutorial.jpg` del README quedó desactualizada (el tutorial interno cambió); el usuario puede regenerarla cuando quiera
+
+### Archivos
+- click2folders.py - v1.10.43 (tutorial ES/EN)
+- installer.iss - v1.10.43 / version_info.txt - 1.10.43.0 / README badge v1.10.43
+- dist\Click2Folders-Portable-v1.10.43.exe - SHA256 19CC9D3E3CB0B800E77052AFB8D98220964892AB8403EF490AAD37921FBC25AC
+- installer\Click2Folders-Instalador-v1.10.43.exe - SHA256 8A65621293EB5E21C1250171108FD86B86554EA462171651BAA79E5B9772EA5D
+- Backup Claude/v1.10.43/ - .py + spec + iss + NOTAS_SESION + portable + instalador + README + PRIVACY + version_info
+
+---
+
+## v1.10.44 - 06/10/2026 - README: 4 títulos de capturas con textos nuevos (877 archivos, "Ahora queda", "¡Y subcarpetas!", "Incluso puedes")
+
+### Contexto
+- Usuario pidió 4 cambios de texto en los títulos de las capturas del README (citaba los que ve en GitHub, que corresponden a la versión aún sin subir de v1.10.43 → los nuevos textos reemplazan a los de v1.10.43 pendientes)
+
+### Cambios README (títulos)
+1. `Antes / Before` → **`877 archivos desordenados`** (texto exacto pedido, sin traducción)
+2. `Organizado por Años / Organized by Years` → **`Ahora queda organizado por Años / Organized by Years`**
+3. `Después / After` → **`¡Y subcarpetas por mes! / And month subfolders!`** (EN según regla ES/EN; "month subfolders" = término ya usado en el README)
+4. `Organización por Mes (Inglés) / Organization by Month (English)` → **`Incluso puedes poner las subcarpetas en inglés / You can even have the subfolders in English`** — se conserva el párrafo "También puedes crear las subcarpetas en inglés: pon el programa en inglés y haz clic en Organizar." (+EN) que explica el CÓMO
+5. **Bump v1.10.44**: py ×2, installer.iss ×3, README badge, version_info.txt → 1.10.44.0
+
+### Verificación
+- py_compile OK
+- Test 12/12 PASS (mainloop+after): los 4 títulos nuevos + "Antes / Before" ausente + nota cómo-crear conservada + paso1 portable + modos 1-4 desanidados + badge v1.10.44 + título v1.10.44 + tutorial ES/EN notas
+- EnumWindows runtime: "Click2Folders - ... v1.10.44" PASS
+- ISCC OK (11.328 sec)
+
+### Archivos
+- click2folders.py - v1.10.44
+- installer.iss - v1.10.44 / version_info.txt - 1.10.44.0 / README badge v1.10.44
+- dist\Click2Folders-Portable-v1.10.44.exe - SHA256 55E0F77EE50E77D372A716D86777E0651652C851AC7A3F988E7FA6BD2E033EB3
+- installer\Click2Folders-Instalador-v1.10.44.exe - SHA256 D7673203671535310173F9046B10B7CC7AA721953A78C496DD66F1569B62FF1B
+- Backup Claude/v1.10.44/ - .py + spec + iss + NOTAS_SESION + portable + instalador + README + PRIVACY + version_info
