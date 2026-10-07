@@ -1092,3 +1092,28 @@
 - dist\Click2Folders-Portable-v1.10.44.exe - SHA256 55E0F77EE50E77D372A716D86777E0651652C851AC7A3F988E7FA6BD2E033EB3
 - installer\Click2Folders-Instalador-v1.10.44.exe - SHA256 D7673203671535310173F9046B10B7CC7AA721953A78C496DD66F1569B62FF1B
 - Backup Claude/v1.10.44/ - .py + spec + iss + NOTAS_SESION + portable + instalador + README + PRIVACY + version_info
+
+---
+
+## v1.10.45 - 07/10/2026 - README: título nuevo de la imagen en inglés + eliminado el párrafo redundante
+
+### Contexto
+- Usuario (tras ver v1.10.44 ya publicado) pidió: título nuevo para la captura en inglés y eliminar el texto enmarcado en rojo (título viejo). Confirmó por pregunta: el nuevo texto pasa a ser el TÍTULO y el párrafo "También puedes crear..." (con su traducción) se ELIMINA para no repetir el mismo mensaje
+
+### Cambios README
+1. `### Incluso puedes poner las subcarpetas en inglés / You can even have the subfolders in English` → **`### Incluso nombra las subcarpetas en inglés, solo pon el programa en inglés y da click en organize / It even names the subfolders in English, just put the program in English and click organize`**
+2. **Eliminado** el párrafo bilingual debajo de la imagen: "También puedes crear las subcarpetas en inglés: pon el programa en inglés y haz clic en 'Organizar'." + "You can also create the subfolders in English: put the program in English and click "Organize"."
+3. **Bump v1.10.45**: py ×2, installer.iss ×3, README badge, version_info.txt → 1.10.45.0
+
+### Verificación
+- py_compile OK
+- Test 12/12 PASS (mainloop+after): título nuevo ES+EN presente, título viejo ausente, párrafo antiguo ausente, 3 títulos anteriores conservados, paso portable, modos 1-4, badge, título app, tutorial ES/EN
+- EnumWindows runtime: "Click2Folders - ... v1.10.45" PASS
+- ISCC OK (21.281 sec)
+
+### Archivos
+- click2folders.py - v1.10.45
+- installer.iss - v1.10.45 / version_info.txt - 1.10.45.0 / README badge v1.10.45
+- dist\Click2Folders-Portable-v1.10.45.exe - SHA256 DF919334B4EB0DC3D0E71839A5159545622DA78C3B9E4A0053590E56BC7AB76B
+- installer\Click2Folders-Instalador-v1.10.45.exe - SHA256 4B7288A770F4FC61C9E49493AECDA923AC569571E963CC0B7FCA83AA9873FD72
+- Backup Claude/v1.10.45/ - .py + spec + iss + NOTAS_SESION + portable + instalador + README + PRIVACY + version_info

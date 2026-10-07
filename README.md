@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v1.10.44-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-v1.10.45-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/python-3.13+-green" alt="Python"/>
   <img src="https://img.shields.io/badge/platform-Windows-lightgrey" alt="Windows"/>
   <img src="https://img.shields.io/badge/VirusTotal-0%2F69-brightgreen" alt="VirusTotal"/>
@@ -42,14 +42,10 @@ Click2Folders detects the dates of your photos and videos to create year folders
   <img src="screenshots/Despues.jpg" alt="Después de organizar" width="700"/>
 </p>
 
-### Incluso puedes poner las subcarpetas en inglés / You can even have the subfolders in English
+### Incluso nombra las subcarpetas en inglés, solo pon el programa en inglés y da click en organize / It even names the subfolders in English, just put the program in English and click organize
 <p align="center">
   <img src="screenshots/Organize%20into%20subfolders%20by%20month%20in%20English.jpg" alt="Organized into subfolders by month in English" width="300"/>
 </p>
-
-También puedes crear las subcarpetas en inglés: pon el programa en inglés y haz clic en "Organizar".
-
-You can also create the subfolders in English: put the program in English and click "Organize".
 
 ### Instalación - SmartScreen / Installation - SmartScreen
 <p align="center">
