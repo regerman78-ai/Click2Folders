@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v1.10.48-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-v1.10.49-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/python-3.13+-green" alt="Python"/>
   <img src="https://img.shields.io/badge/platform-Windows-lightgrey" alt="Windows"/>
   <img src="https://img.shields.io/badge/VirusTotal-0%2F69-brightgreen" alt="VirusTotal"/>
@@ -157,12 +157,11 @@ Correo de contacto: **click2folders@gmail.com**
 
 ## ¿Cómo usarlo? / How to use?
 
-1. Descarga el instalador o la versión portable desde [Releases](https://github.com/regerman78-ai/Click2Folders/releases)
-2. Instala Click2Folders
-3. Agrega la carpeta o carpetas que quieras organizar
-4. Elige el modo de organización
-5. Marca las carpetas y haz clic en "Organizar"
-6. ¡Listo! Tus fotos y videos estarán organizados cronológicamente
+1. Descarga el instalador o usa la versión portable y abre el programa
+2. Elige el modo de organización y agrega las carpetas que quieras
+3. Click en Organizar
+
+¡También puedes deshacer la organización y elegir otro modo de organización las veces que quieras!
 
 ---
 

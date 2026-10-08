@@ -1205,3 +1205,33 @@
 - dist\Click2Folders-Portable-v1.10.48.exe - SHA256 9542EC93EA62BC03525A1367486F8EF1C73168982F14474E47B0722E11D4CAB3
 - installer\Click2Folders-Instalador-v1.10.48.exe - SHA256 AAB67D4E31D9F9B658400F07B4B93BEB0E1F71DFA53F1D7CC08E97D424C273C8
 - Backup Claude/v1.10.48/ - .py + spec + iss + NOTAS_SESION + portable + instalador + README + PRIVACY + version_info
+
+---
+
+## v1.10.49 - 08/10/2026 - README: "¿Cómo usarlo?" reducido a 3 pasos + nota de deshacer
+
+### Contexto
+- Usuario: la lista de 6 pasos de "¿Cómo usarlo? / How to use?" estaba muy larga → reemplazar por 3 pasos + nota de deshacer (textos exactos dados por el usuario)
+
+### Cambios README
+1. **Lista nueva** (antes 6 pasos):
+   1. Descarga el instalador o usa la versión portable y abre el programa
+   2. Elige el modo de organización y agrega las carpetas que quieras
+   3. Click en Organizar
+2. **Nota nueva** (párrafo aparte tras línea en blanco): "¡También puedes deshacer la organización y elegir otro modo de organización las veces que quieras!"
+3. **Eliminados**: link Releases del paso 1 (la sección "Descarga / Download" arriba ya lo tiene), "Instala Click2Folders", "Agrega la carpeta...", "Marca las carpetas...", "¡Listo! Tus fotos..."
+4. **Bump v1.10.49**: py ×2, installer.iss ×3, README badge, version_info.txt → 1.10.49.0
+
+### Verificación
+- py_compile OK
+- Test **32/32 PASS** (mainloop+after): 3 pasos nuevos + nota de deshacer presentes, 5 textos viejos ausentes, línea Ko-fi intacta, badge/iss ×2/version_info ×4/APP_VERSION, ventanas Donaciones ES+EN sin regresión (4 tarjetas, Ko-fi primero, título/enlace/glifo/logo)
+- EnumWindows runtime: "Click2Folders - ... v1.10.49" PASS
+- ISCC OK (11.157 sec)
+
+### Archivos
+- click2folders.py - v1.10.49 (solo bump)
+- installer.iss - v1.10.49 / version_info.txt - 1.10.49.0 / README badge v1.10.49
+- README.md - lista ¿Cómo usarlo? reducida
+- dist\Click2Folders-Portable-v1.10.49.exe - SHA256 36A56960A4763CF567B55354C3DDEAC8C754FE63E53FAB4C4AB90DB3A8062E78
+- installer\Click2Folders-Instalador-v1.10.49.exe - SHA256 C7388128993B70306F356605CC4CFA59332D3F51FC1469D50277C7EF8270F138
+- Backup Claude/v1.10.49/ - .py + spec + iss + NOTAS_SESION + portable + instalador + README + PRIVACY + version_info

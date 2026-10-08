@@ -1,7 +1,7 @@
 # -- coding: utf-8 --
 """
 Click2Folders - Organizador automático de fotos y videos
-Versión: v1.10.48
+Versión: v1.10.49
 """
 import os
 import re
@@ -27,7 +27,7 @@ ctk.set_default_color_theme("blue")
 
 # Variables de la aplicación
 APP_NAME = "Click2Folders"
-APP_VERSION = "v1.10.48"
+APP_VERSION = "v1.10.49"
 GITHUB_REPO = "regerman78-ai/Click2Folders"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 GITHUB_RELEASES_URL = f"{GITHUB_URL}/releases"
