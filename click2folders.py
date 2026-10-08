@@ -1,7 +1,7 @@
 # -- coding: utf-8 --
 """
 Click2Folders - Organizador automático de fotos y videos
-Versión: v1.10.45
+Versión: v1.10.48
 """
 import os
 import re
@@ -27,7 +27,7 @@ ctk.set_default_color_theme("blue")
 
 # Variables de la aplicación
 APP_NAME = "Click2Folders"
-APP_VERSION = "v1.10.45"
+APP_VERSION = "v1.10.48"
 GITHUB_REPO = "regerman78-ai/Click2Folders"
 GITHUB_URL = f"https://github.com/{GITHUB_REPO}"
 GITHUB_RELEASES_URL = f"{GITHUB_URL}/releases"
@@ -2629,6 +2629,39 @@ class Click2FoldersApp(tk.Tk):
                      font=("Segoe UI", 12), text_color="#475569", justify="center").pack(pady=(0, 3))
         ctk.CTkLabel(pad, text="Consider donating to keep it that way!" if eng else "¡Considera donar para que siga siendo así!", 
                      font=("Segoe UI", 12, "bold"), text_color="#475569", justify="center").pack(pady=(0, 10))
+
+        # --- KO-FI ---
+        kofi_outer = ctk.CTkFrame(pad, fg_color="white", corner_radius=12, border_width=2, border_color="#1e3a5f")
+        kofi_outer.pack(fill="x", pady=(0, 6), padx=10)
+        kofi_content = ctk.CTkFrame(kofi_outer, fg_color="white", corner_radius=12)
+        kofi_content.pack(anchor="center", pady=8, padx=8)
+
+        def open_kofi(e=None):
+            try:
+                webbrowser.open("https://ko-fi.com/click2folders")
+            except Exception:
+                self.clipboard_clear()
+                self.clipboard_append("https://ko-fi.com/click2folders")
+
+        kofi_logo = load_image("BAUL/Ko-fi_Logo.png", max_width=60, max_height=60)
+        if kofi_logo:
+            lbl = ctk.CTkLabel(kofi_content, image=kofi_logo, text="", cursor="hand2", fg_color="white")
+            lbl.image = kofi_logo
+            lbl.pack(side="left", padx=(10, 10))
+            lbl.bind("<Button-1>", open_kofi)
+        kofi_right = ctk.CTkFrame(kofi_content, fg_color="white")
+        kofi_right.pack(side="left")
+        ctk.CTkLabel(kofi_right, text="Buy me a coffee" if eng else "Invítame un café",
+                     font=("Segoe UI", 12, "bold"), text_color="#1e3a5f", fg_color="white").pack(anchor="w")
+
+        kofi_link = ctk.CTkLabel(kofi_right, text="https://ko-fi.com/click2folders",
+                                 font=("Segoe UI", 11), text_color="#3b82f6", cursor="hand2", fg_color="white")
+        kofi_link.bind("<Button-1>", open_kofi)
+        kofi_link.pack(anchor="w")
+        self._action_icon(kofi_content, "↗", open_kofi).pack(side="left", padx=(12, 6))
+
+        # Separador
+        ctk.CTkFrame(pad, fg_color="#e8eef5", height=1).pack(fill="x", pady=1, padx=10)
 
         # --- PAYPAL ---
         paypal_outer = ctk.CTkFrame(pad, fg_color="white", corner_radius=12, border_width=2, border_color="#1e3a5f")

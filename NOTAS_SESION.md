@@ -1117,3 +1117,91 @@
 - dist\Click2Folders-Portable-v1.10.45.exe - SHA256 DF919334B4EB0DC3D0E71839A5159545622DA78C3B9E4A0053590E56BC7AB76B
 - installer\Click2Folders-Instalador-v1.10.45.exe - SHA256 4B7288A770F4FC61C9E49493AECDA923AC569571E963CC0B7FCA83AA9873FD72
 - Backup Claude/v1.10.45/ - .py + spec + iss + NOTAS_SESION + portable + instalador + README + PRIVACY + version_info
+
+---
+
+## v1.10.46 - 07/10/2026 - Ko-fi: nueva tarjeta de donación PRIMERA (app + README + PRIVACY)
+
+### Contexto
+- Usuario creó su página de Ko-fi **https://ko-fi.com/click2folders** y conectó su cuenta de PayPal (Ko-fi paga instantáneo al PayPal; 0% de comisión en donaciones únicas con Contributor Mode desactivada) → integrar Ko-fi como método de donación **primero** en el orden: **Ko-fi → PayPal → Nequi → USDT**
+- Icono colocado por el usuario: `BAUL/Ko-fi_Logo.png` (220x220) - el spec empaqueta BAUL completo, se incluye solo
+
+### Cambios
+1. **Ventana Donaciones (`_do_on_donate`)**: nueva tarjeta **KO-FI PRIMERA** (antes de PayPal), mismo patrón de las demás: logo `BAUL/Ko-fi_Logo.png` (60x60, clicable), título **"Apóyame en Ko-fi:"** / **"Support me on Ko-fi:"**, enlace `https://ko-fi.com/click2folders` (clicable) y botón **↗** al final vía `_action_icon`; `open_kofi()` abre el navegador con fallback a portapapeles (mismo patrón `open_nequi_checkout`) + separador → orden final: **Ko-fi → PayPal → Nequi → USDT**
+2. **README**: sección `### Ko-fi` **primera** en Donaciones, antes de `### PayPal`: "Apóyame en Ko-fi / Support me on Ko-fi: **https://ko-fi.com/click2folders**"
+3. **PRIVACY.md**: terceros ES+EN → "(Ko-fi, PayPal, Nequi/Wompi, USDT)"
+4. **Bump v1.10.46**: py ×2, installer.iss ×3, README badge, version_info.txt → 1.10.46.0
+
+### Verificación
+- py_compile OK
+- Test **30/30 PASS** (mainloop+after): archivos (README link + Ko-fi antes de PayPal + badge, PRIVACY ×2, iss ×2, version_info ×4, APP_VERSION) + ES y EN: 4 tarjetas, Ko-fi PRIMERA, PayPal 2da, Nequi 3ra, USDT 4ta, título ES/EN, enlace, glifo al final, logo cargado, botón ↗ único
+- EnumWindows runtime: "Click2Folders - ... v1.10.46" PASS
+- ISCC OK (9.078 sec)
+
+### Nota
+- `screenshots/donations.jpg` del README quedó desactualizado (ahora muestra la tarjeta Ko-fi primero); el usuario regenerará la captura antes de publicar
+
+### Archivos
+- click2folders.py - v1.10.46 (tarjeta Ko-fi)
+- BAUL/Ko-fi_Logo.png - icono nuevo (colocado por el usuario)
+- installer.iss - v1.10.46 / version_info.txt - 1.10.46.0 / README badge v1.10.46
+- dist\Click2Folders-Portable-v1.10.46.exe - SHA256 6BBD343F5AB594E506C4912401D7E1A76AFE8C257FE2C480F6435BAA84EB3D8A
+- installer\Click2Folders-Instalador-v1.10.46.exe - SHA256 1DDF7E064FA65DAC406334CA65CC39A622FDF46990EB386A2661DCD556ACCD51
+- Backup Claude/v1.10.46/ - .py + spec + iss + NOTAS_SESION + portable + instalador + README + PRIVACY + version_info
+
+---
+
+## v1.10.47 - 08/10/2026 - Ko-fi: título nuevo "Invítame un café" (ES+EN) en app y README
+
+### Contexto
+- Usuario vio la ventana de Donaciones de v1.10.46 y prefirió **"Invítame un café en Ko-fi:"** en vez de "Apóyame en Ko-fi:" → corregir; EN elegido por pregunta: **"Buy me a coffee on Ko-fi:"** (frase oficial de Ko-fi)
+- README: mismo texto bilingüe nuevo en la sección Ko-fi
+
+### Cambios
+1. **Ventana Donaciones**: título Ko-fi ES "Apóyame en Ko-fi:" → **"Invítame un café en Ko-fi:"**; EN "Support me on Ko-fi:" → **"Buy me a coffee on Ko-fi:"**
+2. **README**: línea de la sección Ko-fi → **"Invítame un café en Ko-fi / Buy me a coffee on Ko-fi: https://ko-fi.com/click2folders"**
+3. **Bump v1.10.47**: py ×2, installer.iss ×3, README badge, version_info.txt → 1.10.47.0
+
+### Verificación
+- py_compile OK
+- Test **34/34 PASS** (mainloop+after): textos nuevos ES+EN presentes + viejos ausentes (app y README), README Ko-fi antes de PayPal, badge/iss ×2/version_info ×4/APP_VERSION, 4 tarjetas en orden ES+EN, logo/glyph al final/botón ↗ único
+- EnumWindows runtime: "Click2Folders - ... v1.10.47" PASS
+- ISCC OK (10.515 sec)
+
+### Nota (hallazgo operativo)
+- El **mutex de instancia única** (`Click2Folders_SingleInstance_v1`, línea 178) + `sys.exit(0)` en `__init__` (línea 1371) hace que el test salga **0 sin ningún output** si queda un exe corriendo → **matar procesos *click2folders* ANTES de correr tests** (2 instancias v1.10.46 de la verificación previa causaron el silencio)
+
+### Archivos
+- click2folders.py - v1.10.47 (título Ko-fi ES/EN)
+- installer.iss - v1.10.47 / version_info.txt - 1.10.47.0 / README badge v1.10.47
+- dist\Click2Folders-Portable-v1.10.47.exe - SHA256 5972450D44B73CD4D9175294EA04E5707A1AFE641E6331C2AF03033FA4A3E191
+- installer\Click2Folders-Instalador-v1.10.47.exe - SHA256 2A76F0FE758B8E25D008323BB61DEB95DB918CCDE2E91B9D0CDF66E910CEEB61
+- Backup Claude/v1.10.47/ - .py + spec + iss + NOTAS_SESION + portable + instalador + README + PRIVACY + version_info
+
+---
+
+## v1.10.48 - 08/10/2026 - Ko-fi: título simplificado "Invítame un café" (sin "en Ko-fi")
+
+### Contexto
+- Usuario vio v1.10.47 en pantalla y pidió **quitar "en Ko-fi:"** del título (recuadro rojo en su captura): solo dejar **"Invítame un café"**
+
+### Cambios
+1. **Ventana Donaciones**: título Ko-fi ES "Invítame un café en Ko-fi:" → **"Invítame un café"**; EN "Buy me a coffee on Ko-fi:" → **"Buy me a coffee"**
+2. **README**: línea Ko-fi → **"Invítame un café / Buy me a coffee: https://ko-fi.com/click2folders"** (misma simplificación bilingüe)
+3. **Bump v1.10.48**: py ×2, installer.iss ×3, README badge, version_info.txt → 1.10.48.0
+
+### Verificación
+- py_compile OK
+- Test **34/34 PASS** (mainloop+after): textos nuevos ES+EN presentes, "en Ko-fi"/"on Ko-fi" ausentes (app y README), README Ko-fi antes de PayPal, badge/iss ×2/version_info ×4/APP_VERSION, 4 tarjetas en orden ES+EN, logo/glyph/botón ↗ único
+- EnumWindows runtime: "Click2Folders - ... v1.10.48" PASS
+- ISCC OK (9.031 sec) - PyInstaller: retry benigno de timestamp (PermissionError 1/20, luego OK)
+
+### Nota
+- Pendiente: captura `screenshots/donations.jpg` del usuario con este título final → push a master y main
+
+### Archivos
+- click2folders.py - v1.10.48 (título Ko-fi simplificado)
+- installer.iss - v1.10.48 / version_info.txt - 1.10.48.0 / README badge v1.10.48
+- dist\Click2Folders-Portable-v1.10.48.exe - SHA256 9542EC93EA62BC03525A1367486F8EF1C73168982F14474E47B0722E11D4CAB3
+- installer\Click2Folders-Instalador-v1.10.48.exe - SHA256 AAB67D4E31D9F9B658400F07B4B93BEB0E1F71DFA53F1D7CC08E97D424C273C8
+- Backup Claude/v1.10.48/ - .py + spec + iss + NOTAS_SESION + portable + instalador + README + PRIVACY + version_info

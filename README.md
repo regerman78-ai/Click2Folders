@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v1.10.45-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-v1.10.48-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/python-3.13+-green" alt="Python"/>
   <img src="https://img.shields.io/badge/platform-Windows-lightgrey" alt="Windows"/>
   <img src="https://img.shields.io/badge/VirusTotal-0%2F69-brightgreen" alt="VirusTotal"/>
@@ -130,6 +130,9 @@ Go to the [Releases](https://github.com/regerman78-ai/Click2Folders/releases) se
 Si el programa te es útil, considera hacer una donación para apoyar su desarrollo.
 
 If the program is useful to you, consider making a donation to support its development.
+
+### Ko-fi
+Invítame un café / Buy me a coffee: **https://ko-fi.com/click2folders**
 
 ### PayPal
 [![Donate with PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/donate?hosted_button_id=JMPWGD5VA32UW)

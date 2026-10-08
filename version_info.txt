@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 10, 45, 0),
-    prodvers=(1, 10, 45, 0),
+    filevers=(1, 10, 48, 0),
+    prodvers=(1, 10, 48, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -16,12 +16,12 @@ VSVersionInfo(
         '040904B0',
         [StringStruct('CompanyName', 'German Vargas'),
         StringStruct('FileDescription', 'Click2Folders - Chronological Photo and Video Organizer'),
-        StringStruct('FileVersion', '1.10.45.0'),
+        StringStruct('FileVersion', '1.10.48.0'),
         StringStruct('InternalName', 'click2folders'),
         StringStruct('LegalCopyright', '(c) 2026 German Vargas'),
         StringStruct('OriginalFilename', 'click2folders.exe'),
         StringStruct('ProductName', 'Click2Folders'),
-        StringStruct('ProductVersion', '1.10.45.0')])
+        StringStruct('ProductVersion', '1.10.48.0')])
       ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]
