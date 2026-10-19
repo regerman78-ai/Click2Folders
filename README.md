@@ -56,7 +56,11 @@ Click2Folders detects the dates of your photos and videos to create year folders
   <img src="screenshots/smartscreen-2.jpg" alt="SmartScreen paso 2" width="500"/>
 </p>
 
-### Ventana Principal / Main Window
+### Tienes 4 modos de organización: 
+### 1) Por fecha de captura / Medio creado o Nombre
+### 2) Por fecha en el nombre
+### 3) Por fecha de creación
+### 4) Por fecha de modificación
 <p align="center">
   <img src="screenshots/main-modos.jpg" alt="Ventana Principal con modos" width="700"/>
 </p>
