@@ -85,27 +85,27 @@ Click2Folders detects the dates of your photos and videos to create year folders
   <img src="screenshots/organized.jpg" alt="Organizado" width="700"/>
 </p>
 
-### Deshacer / Undo
+### Deshacer organización: mueve todos los archivos a la carpeta raiz y elimina las carpetas vacias de año y subcarpetas de mes creadas por el programa con el fin de poder elegir otro modo de organización/ Reset organization: Moves all files to the root folder and deletes the empty year folders and month subfolders created by the program so that you can choose a different organization method
 <p align="center">
   <img src="screenshots/Undo%20organization%201.jpg" alt="Deshacer organización" width="700"/>
 </p>
 
-### Deshacer organización / Undo organization
+### Desorganización completada / Disorganization Complete
 <p align="center">
   <img src="screenshots/Undo%20organization%202.jpg" alt="Deshacer organización paso 2" width="700"/>
 </p>
 
-### Deshacer y reorganizar / Undo and reorganize
+### Aqui se organizaron las mismas carpetas en otro modo / Here, the same folders were organized differently.
 <p align="center">
   <img src="screenshots/Undo%20organization%203.jpg" alt="Reorganizar en otro modo" width="700"/>
 </p>
 
-### Tutorial
+### Tutorial de como funciona el programa
 <p align="center">
   <img src="screenshots/tutorial.jpg" alt="Tutorial" width="500"/>
 </p>
 
-### Donaciones / Donations
+### El programa es gratuito y libre de anuncios, considera donar para apoyar al desarrollador / The program is free and ad-free; please consider making a donation to support the developer
 <p align="center">
   <img src="screenshots/donations.jpg" alt="Donaciones" width="500"/>
 </p>
