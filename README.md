@@ -21,7 +21,12 @@
 
 ## ¿Qué hace el programa? / What does it do?
 
-Click2Folders detecta las fechas de tus fotos y videos con lo que crea carpetas por año y subcarpetas por mes, luego mueve automáticamente tus archivos a su carpeta correspondiente ordenando todo de forma cronológica con un click, puedes organizar en 4 modos de fecha distintos y también puedes desorganizar las carpetas organizadas por el programa y volver a organizar tus archivos eligiendo una fecha diferente.
+Click2Folders detecta las siguientes fechas de tus fotos y videos
+### 1) Por fecha de captura / Medio creado o Nombre
+### 2) Por fecha en el nombre
+### 3) Por fecha de creación
+### 4) Por fecha de modificación
+Puedes elegir cualquiera de los 4 fechas o modos con lo que el programa creara carpetas por año y subcarpetas por mes, luego mueve automáticamente tus archivos a su carpeta correspondiente ordenando todo de forma cronológica con un click, también puedes desorganizar las carpetas organizadas por el programa y volver a organizar tus archivos eligiendo una de fecha diferente.
 
 Click2Folders detects the dates of your photos and videos to create year folders, month subfolders and then moves them to their corresponding folder automatically.
 
