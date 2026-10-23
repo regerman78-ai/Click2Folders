@@ -21,18 +21,23 @@
 
 ## ¿Qué hace el programa? / What does it do?
 
-Click2Folders detecta las fechas de tus fotos y videos para crear carpetas por año, subcarpetas por mes y luego los mueve a su carpeta correspondiente de forma automática.
+Click2Folders detecta las siguientes fechas de tus fotos y videos
+### 1) Por fecha de captura / Medio creado o Nombre
+### 2) Por fecha en el nombre
+### 3) Por fecha de creación
+### 4) Por fecha de modificación
+Puedes elegir cualquiera de los 4 fechas o modos con lo que el programa creara carpetas por año y subcarpetas por mes, luego mueve automáticamente tus archivos a su carpeta correspondiente ordenando todo de forma cronológica con un click, también puedes desorganizar las carpetas organizadas por el programa y volver a organizar tus archivos eligiendo una de fecha diferente.
 
 Click2Folders detects the dates of your photos and videos to create year folders, month subfolders and then moves them to their corresponding folder automatically.
 
 ## Capturas / Screenshots
 
-### 877 archivos desordenados
+### Ejemplo de 877 archivos desordenados / Example of 877 unsorted files
 <p align="center">
   <img src="screenshots/Antes.jpg" alt="Antes de organizar" width="700"/>
 </p>
 
-### Ahora queda organizado por Años / Organized by Years
+### Ahora los puedes organizar en carpetas por años con un click/ Now you can organize them into folders by year with just one click
 <p align="center">
   <img src="screenshots/Organized%20for%20Years.jpg" alt="Carpetas organizadas por año" width="500"/>
 </p>
@@ -42,7 +47,7 @@ Click2Folders detects the dates of your photos and videos to create year folders
   <img src="screenshots/Despues.jpg" alt="Después de organizar" width="700"/>
 </p>
 
-### Incluso nombra las subcarpetas en inglés, solo pon el programa en inglés y da click en organize / It even names the subfolders in English, just put the program in English and click organize
+### Tambien nombra las subcarpetas en inglés, solo pon el programa en inglés y da click en organize / It also names the subfolders in English; just set the program to English and click “Organize.”
 <p align="center">
   <img src="screenshots/Organize%20into%20subfolders%20by%20month%20in%20English.jpg" alt="Organized into subfolders by month in English" width="300"/>
 </p>
@@ -56,7 +61,11 @@ Click2Folders detects the dates of your photos and videos to create year folders
   <img src="screenshots/smartscreen-2.jpg" alt="SmartScreen paso 2" width="500"/>
 </p>
 
-### Ventana Principal / Main Window
+### Tienes 4 modos de organización: 
+### 1) Por fecha de captura / Medio creado o Nombre
+### 2) Por fecha en el nombre
+### 3) Por fecha de creación
+### 4) Por fecha de modificación
 <p align="center">
   <img src="screenshots/main-modos.jpg" alt="Ventana Principal con modos" width="700"/>
 </p>
