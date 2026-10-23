@@ -105,7 +105,7 @@ Click2Folders detects the dates of your photos and videos to create year folders
   <img src="screenshots/tutorial.jpg" alt="Tutorial" width="500"/>
 </p>
 
-### El programa es gratuito y libre de anuncios, considera donar para apoyar al desarrollador / The program is free and ad-free; please consider making a donation to support the developer
+### El programa es gratuito, libre de anuncios y seguro, considera donar para apoyar al desarrollador / The program is free, ad-free, and secure; please consider making a donation to support the developer
 <p align="center">
   <img src="screenshots/donations.jpg" alt="Donaciones" width="500"/>
 </p>
