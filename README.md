@@ -76,6 +76,21 @@ Click2Folders detects the dates of your photos and videos to create year folders
   <img src="screenshots/organized.jpg" alt="Organizado" width="700"/>
 </p>
 
+### Deshacer / Undo
+<p align="center">
+  <img src="screenshots/Undo organization 1.jpg" alt="Deshacer organización" width="700"/>
+</p>
+
+### Deshacer organización / Undo organization
+<p align="center">
+  <img src="screenshots/Undo organization 2.jpg" alt="Deshacer organización paso 2" width="700"/>
+</p>
+
+### Deshacer y reorganizar / Undo and reorganize
+<p align="center">
+  <img src="screenshots/Undo organization 3.jpg" alt="Reorganizar en otro modo" width="700"/>
+</p>
+
 ### Tutorial
 <p align="center">
   <img src="screenshots/tutorial.jpg" alt="Tutorial" width="500"/>
