@@ -27,12 +27,12 @@ Click2Folders detects the dates of your photos and videos to create year folders
 
 ## Capturas / Screenshots
 
-### 877 archivos desordenados
+### Ejemplo de 877 archivos desordenados / Example of 877 unsorted files
 <p align="center">
   <img src="screenshots/Antes.jpg" alt="Antes de organizar" width="700"/>
 </p>
 
-### Ahora queda organizado por Años / Organized by Years
+### Ahora los puedes organizar en carpetas por años con un click/ Now you can organize them into folders by year with just one click
 <p align="center">
   <img src="screenshots/Organized%20for%20Years.jpg" alt="Carpetas organizadas por año" width="500"/>
 </p>
@@ -42,7 +42,7 @@ Click2Folders detects the dates of your photos and videos to create year folders
   <img src="screenshots/Despues.jpg" alt="Después de organizar" width="700"/>
 </p>
 
-### Incluso nombra las subcarpetas en inglés, solo pon el programa en inglés y da click en organize / It even names the subfolders in English, just put the program in English and click organize
+### Tambien nombra las subcarpetas en inglés, solo pon el programa en inglés y da click en organize / It also names the subfolders in English; just set the program to English and click “Organize.”
 <p align="center">
   <img src="screenshots/Organize%20into%20subfolders%20by%20month%20in%20English.jpg" alt="Organized into subfolders by month in English" width="300"/>
 </p>
